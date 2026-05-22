@@ -118,6 +118,9 @@
 > error: target tuple in channel name 'stable-x86_64-pc-windows-gnu'
 > Error: Process completed with exit code 1. fix this ci error in ci
 
+**P-033**
+> for the 2nd part of the sprint1 - we want LLMs for the following functions: 1. Intent classification 2. RAG based search 3. Visual diagrams understanding 4. Document exploration / chunking / embeddings 5. Output or SRS creation 6. For data transformations 8. Requirement refinement 9. voice / image to text 10. localization Also we want the LLM and the state to be injected at runtime only into the session or user object which we will define later - we will use lazy loading to avoid unecessary delays - and follow a factory or session factory architecture - keeping this in mind now create a design pattern strategy document in /sprints/sprint1 and the llm universe document. Also, keep in mind the constraints of complixity and budget
+
 **P-032**
 > error: use of `default` to create a unit struct … GateManager::default() … got this error again there is a dependency issue - lets make this docker first so that the githhub actions work without a issue - create the necessary docker files and then make changes to the ci accordingly ensure all test pass in docker and then push
 

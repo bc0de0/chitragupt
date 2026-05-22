@@ -1,558 +1,158 @@
-# Sprint 1 — Core Engine: Intent-Driven State Machine + RAG Pipeline
+# Sprint 1 — The Conversation Engine
 
-**Sprint Theme:** Build the system's ability to guide a user through every phase of the BA journey — one step at a time, grounded in what they've said and uploaded.
+**Sprint 0 gave us the blueprint. Sprint 1 builds the engine that runs it.**
 
-**Priority Principle:** Every engineering decision in Sprint 1 must ask: *does this make the system better at knowing what to ask next?* Feature completeness comes later. Guidance quality comes first.
+This sprint delivers the core of what makes Chitragupt useful: a system that can hold an intelligent, structured conversation with a BA, understand what they are saying, know what is still missing, and ask exactly the right question next.
 
-**Sprint Goal:** A fully functional, conversation-driven state machine where a BA can go from "I have a problem" to "I have a confirmed requirements list" — with the system leading at every turn via intent-aware, RAG-grounded guidance.
-
----
-
-## The Core Engine Concept
-
-Sprint 1 builds one thing: **the engine that knows where the user is, what they still need to tell us, and what to ask next.**
-
-Three components work together on every user message:
-
-1. **State Machine** — tracks which phase the session is in and enforces that transitions only happen when measurable acceptance criteria are met.
-2. **Per-Turn LLM Pipeline** — classifies intent, extracts structured entities, retrieves relevant context, evaluates gaps, and generates the next system message.
-3. **Next-Step Guidance** — every system response must end with exactly one clear action for the user: a question, a confirmation prompt, or a transition offer. Never a wall of text with no direction.
-
-The user should never wonder "what do I do next?" That is a system failure.
+By the end of Sprint 1, a BA should be able to sit down with a fresh session, describe a client problem in their own words, upload relevant documents at the right moments, and arrive at a confirmed, traceable requirements list — guided at every step by the system.
 
 ---
 
-## 1. State Machine Design
+## What the System Does
 
-### 1.1 States and Transitions
+Chitragupt does not ask the BA to fill in a form. It holds a conversation. But unlike an open-ended chat tool, it knows where the session is, what has already been captured, what is still missing, and what needs to be asked next.
 
-```mermaid
-stateDiagram-v2
-    direction LR
+Every time the BA sends a message, the system does five things in sequence — invisibly and immediately:
 
-    [*] --> PROBLEM_INTAKE : Session created
+1. **Understands what the BA just said.** Not just the words, but the intent — is this new information, a confirmation, a correction, a request to revisit something, or a question directed at the system?
+2. **Extracts what was captured.** If the BA described a stakeholder, the system adds that stakeholder to the session. If they named a constraint, the constraint is recorded. Nothing is lost.
+3. **Searches for context.** If documents have been uploaded, the system searches them for anything relevant to what was just said. An org chart uploaded earlier might now be relevant to a new actor the BA just named.
+4. **Identifies what is still missing.** The system knows what must be established before this phase can close. It identifies the most important gap remaining and determines the best question to ask.
+5. **Responds with one clear action.** Acknowledge what was said. Show what was captured. Ask exactly one question, or offer to move to the next phase. Never both. Never more than one.
 
-    PROBLEM_INTAKE --> STAKEHOLDER_DISCOVERY : AC-S1 met + BA confirms
-
-    STAKEHOLDER_DISCOVERY --> REQUIREMENT_ELICITATION : AC-S2 met + BA confirms
-
-    REQUIREMENT_ELICITATION --> CONSTRAINT_CAPTURE : AC-S3 met + BA confirms
-    REQUIREMENT_ELICITATION --> REQUIREMENT_ELICITATION : Gap surfaced\nSystem probes deeper
-
-    CONSTRAINT_CAPTURE --> ARCHITECTURE_ALIGNMENT : AC-S4 met + BA confirms
-
-    ARCHITECTURE_ALIGNMENT --> REVIEW_AND_SIGN_OFF : AC-S5 met + BA confirms
-
-    REVIEW_AND_SIGN_OFF --> REQUIREMENT_ELICITATION : BA requests revision
-    REVIEW_AND_SIGN_OFF --> SIGNED_OFF : AC-S6 met + BA approves
-
-    SIGNED_OFF --> [*]
-```
-
-### 1.2 State Properties
-
-Each state in the LangGraph graph carries the following typed properties on the session state object:
-
-```python
-class SessionState(TypedDict):
-    # Identity
-    session_id: str
-    project_id: str
-    tenant_id: str
-    user_id: str
-
-    # Current position
-    current_state: Literal[
-        "PROBLEM_INTAKE",
-        "STAKEHOLDER_DISCOVERY",
-        "REQUIREMENT_ELICITATION",
-        "CONSTRAINT_CAPTURE",
-        "ARCHITECTURE_ALIGNMENT",
-        "REVIEW_AND_SIGN_OFF",
-        "SIGNED_OFF",
-    ]
-
-    # Extracted knowledge (append-only within session)
-    problem_statement: str | None
-    business_domain: str | None
-    affected_user_types: list[str]
-    definition_of_success: str | None
-    actors: list[Actor]
-    requirements: list[DraftRequirement]
-    constraints: list[DraftConstraint]
-    assumptions: list[DraftAssumption]
-    decision_directions: dict[str, str]     # decision_id → guided direction
-
-    # AC tracking
-    ac_met: list[str]                       # e.g. ["AC-S1-1", "AC-S1-3"]
-    ac_unmet: list[str]                     # remaining criteria for current state
-    open_questions: list[OpenQuestion]
-
-    # Conversation
-    messages: list[Message]                 # full history
-    last_system_question: str              # what we just asked
-    last_intent: str                        # classified intent of last user turn
-
-    # Retrieval
-    indexed_document_ids: list[str]        # docs uploaded and indexed this session
-    last_retrieved_chunks: list[ChunkRef]  # chunks used in last synthesis
-
-    # Cost tracking
-    session_cost_usd: float
-    turn_count: int
-```
-
-### 1.3 Transition Rules
-
-A state transition must satisfy **all three conditions**:
-
-1. Every AC defined for that transition is evaluated as `PASS`.
-2. The system has presented a summary of what was captured in the current state.
-3. The BA has responded with an explicit confirmation (`CONFIRM` intent).
-
-If AC-1 and AC-2 are met but the BA has not confirmed, the system presents the summary and waits. It does not transition automatically.
-
-If some AC are unmet when the BA says "let's move on," the system surfaces the unmet criteria explicitly before offering to proceed: *"We still don't have X and Y — do you want to continue anyway and fill these in later?"* Proceeding without met AC is allowed but creates open questions for those criteria.
+The BA should never have to wonder what to do next. If they ever do, that is a failure of the system, not the BA.
 
 ---
 
-## 2. Per-Turn LLM Pipeline
+## The BA Journey in Sprint 1
 
-Every user message triggers this pipeline in sequence. No step is skippable.
-
-```mermaid
-flowchart TD
-    A([User Message]) --> B
-
-    subgraph CLASSIFY["Step 1 — Intent Classification\nFast LLM · &lt;200ms target"]
-        B[Classify intent\nagainst current state context]
-    end
-
-    B --> C{Intent}
-
-    C -->|ANSWER| D
-    C -->|UPLOAD_SIGNAL| E
-    C -->|CONFIRM| F
-    C -->|DENY / CORRECTION| G
-    C -->|REVISIT| H
-    C -->|SKIP| I
-
-    subgraph EXTRACT["Step 2 — Entity Extraction\nStandard LLM · state-specific extractor"]
-        D[Extract structured entities\nfor current state]
-    end
-
-    subgraph INGEST["Step 2 alt — Ingestion"]
-        E[Trigger document ingestion pipeline\nChunk · Embed · Index to vector store]
-    end
-
-    subgraph VALIDATE["Step 2 alt — AC Validation"]
-        F[Evaluate all AC for current state\nCheck if transition is ready]
-    end
-
-    subgraph CORRECT["Step 2 alt — Correction Handler"]
-        G[Locate the entity being corrected\nUpdate session state\nMark prior version as overridden]
-    end
-
-    subgraph ROLLBACK["Step 2 alt — State Rollback"]
-        H[Re-enter requested state\nPresent summary of what was captured there\nResume from last unmet AC]
-    end
-
-    subgraph SKIPHANDLER["Step 2 alt — Skip Handler"]
-        I[Log skipped criteria as open questions\nFlag with priority = should_resolve]
-    end
-
-    D --> J
-    E --> J
-    G --> J
-    I --> J
-
-    subgraph RAG["Step 3 — Retrieval\nHybrid search on session vector store"]
-        J[Build retrieval query\nfrom extracted entities + current state\nSearch indexed documents]
-    end
-
-    J --> K
-
-    subgraph GAP["Step 4 — Gap Analysis\nStandard LLM"]
-        K[Evaluate AC completeness\nIdentify highest-priority unmet criterion\nSuggest the most useful next question]
-    end
-
-    K --> L
-
-    subgraph GUIDANCE["Step 5 — Guidance Generation\nPremium LLM"]
-        L[Generate system response:\n1. Acknowledge what was said\n2. State what was captured\n3. Ask exactly one next question\n   OR offer state transition]
-    end
-
-    L --> M
-
-    subgraph ACCHECK["Step 6 — Transition Readiness"]
-        M{All AC met\nfor current state?}
-    end
-
-    M -->|No| N([Emit response with next question])
-    M -->|Yes| O([Emit summary + transition offer])
-
-    F --> M
-```
-
-### 2.1 Intent Types
-
-| Intent | Description | Triggered When |
-|---|---|---|
-| `ANSWER` | BA is providing information requested | Substantive text that contains new knowledge |
-| `UPLOAD_SIGNAL` | BA indicates a file has been or will be uploaded | Message references a document, file, or attachment |
-| `CONFIRM` | BA is accepting the system's summary or proposal | "yes", "correct", "looks good", "proceed", "that's right" |
-| `DENY` | BA is rejecting or correcting something | "no", "that's wrong", "actually", corrections to prior extractions |
-| `REVISIT` | BA wants to go back to a prior phase | "can we revisit", "I need to change the stakeholders", "go back to" |
-| `SKIP` | BA wants to move on without answering | "skip this", "I don't know", "not applicable", "come back to this" |
-| `CLARIFICATION_REQUEST` | BA is asking the system a question | Question directed at the system, not an answer |
-| `UPLOAD_COMPLETE` | A document has finished ingestion and is now indexed | System event fired by ingestion pipeline on successful completion; triggers a re-evaluation of upload AC |
-| `OUT_OF_SCOPE` | BA's message is off-topic for the current phase | Unrelated queries; handled with a gentle redirect |
+Sprint 1 covers the first four phases of the seven-phase journey defined in Sprint 0. Each phase has a defined purpose, defined checkpoints, and a defined exit condition.
 
 ---
 
-## 3. Agent Roster
+### Phase 1 — Problem Intake
 
-Five agents operate within the pipeline. Each has a fixed model tier ceiling.
+**Purpose:** Establish what the client is actually trying to solve, in the BA's own words.
 
-| Agent | Model Tier | Role | Output |
-|---|---|---|---|
-| `IntentClassifierAgent` | Fast | Classify the intent of every user turn | Intent enum + confidence score |
-| `EntityExtractorAgent` | Standard | Extract structured data from natural language | Typed entities for current state |
-| `RAGRetrievalAgent` | — (retrieval, not LLM) | Hybrid semantic + keyword search over session documents | Ranked chunks with scores |
-| `GapAnalyzerAgent` | Standard | Evaluate AC completeness; identify highest-priority missing info | AC status list + next question recommendation |
-| `GuidanceGeneratorAgent` | Premium | Compose the final system response with acknowledgment + next step | System message string (streamed) |
+The session opens here. The system asks the BA to describe the client's problem in plain language — no template, no structure imposed. As the BA explains, the system extracts the core problem statement, identifies the business domain, and begins building a picture of who is affected.
 
-Agents are LangGraph nodes. They share the `SessionState` object and communicate exclusively through it. No agent calls another agent directly.
+Before this phase closes, the system must have a clear answer to four questions:
 
----
+- What is the problem the client needs solved?
+- What kind of business is this? (financial services, healthcare, logistics, etc.)
+- Who are the people most affected by this problem?
+- What does success look like for the client?
 
-## 4. Acceptance Criteria per State Transition
+When those four questions have been answered to the system's satisfaction, it presents a summary back to the BA and asks: *"Does this capture the situation correctly?"* The BA confirms. Only then is the transition offered.
 
-These criteria are the engine's "readiness evaluator." Each criterion is a discrete, programmatically checkable condition on the session state. The `GapAnalyzerAgent` evaluates them after every turn.
+**Document checkpoint:** If the BA mentions that the client has provided a brief, a scope statement, or any prior discovery document, the system asks for it before moving on. That document becomes the primary evidence for the problem statement and elevates the reliability of everything extracted from it.
 
 ---
 
-### Transition: PROBLEM_INTAKE → STAKEHOLDER_DISCOVERY
+### Phase 2 — Stakeholder Discovery
 
-**AC-S1-1** `problem_statement` is non-null and contains ≥ 50 characters.
+**Purpose:** Map who has authority, who is affected, and what external systems or third parties are in play.
 
-**AC-S1-2** `business_domain` is classified and matches one of the known domains: `fintech`, `healthcare`, `ecommerce`, `logistics`, `saas_b2b`, `government`, `general`.
+The system now asks the BA to walk through the people and organisations involved in this project. For each person, it captures their name, their role, and their decision-making authority. It also asks about external systems — partner platforms, APIs, legacy infrastructure — because these typically become integration requirements later.
 
-**AC-S1-3** `affected_user_types` contains ≥ 1 entry.
+Before this phase closes, the system must know:
 
-**AC-S1-4** `definition_of_success` is non-null — the BA has described what "done" looks like, even informally.
+- At least two actors have been identified.
+- At least one actor has been confirmed as the decision-maker.
+- Every actor has a name and a role.
+- The BA has been asked about external systems — even if the answer is "there are none."
 
-**AC-S1-5** BA has responded with `CONFIRM` intent to the system's problem summary.
-
-**AC-S1-U1 (Client Intent Document — Triggered)** If during this phase the BA references an existing project brief, discovery document, scope statement, or client-provided intent document, the system must issue an upload prompt before the transition offer is made. One of the following must be true before proceeding: (a) the referenced document has been uploaded and indexed, OR (b) the BA has explicitly declined upload. If a document was referenced but neither condition is met, the transition offer is withheld. If the BA declines upload, all entities extracted from this phase retain `trust_tier = 4` (secondary document level) rather than being elevated to tier 3.
-
-**Failure behavior:** For each unmet criterion, the Gap Analyzer selects the highest-priority gap and the Guidance Generator asks exactly that question. Order: AC-S1-1 → AC-S1-2 → AC-S1-3 → AC-S1-4 → AC-S1-U1 (if triggered) → AC-S1-5.
-
----
-
-### Transition: STAKEHOLDER_DISCOVERY → REQUIREMENT_ELICITATION
-
-**AC-S2-1** `actors` contains ≥ 2 entries.
-
-**AC-S2-2** At least 1 actor has `authority_level = decision_maker`.
-
-**AC-S2-3** Every actor in `actors` has both `name` and `role` populated.
-
-**AC-S2-4** At least 1 external system or third-party dependency has been identified (or BA has explicitly stated "no external systems").
-
-**AC-S2-5** BA has confirmed the actor registry with `CONFIRM` intent.
-
-**AC-S2-U1 (Checkpoint A — Required Prompt Gate)** The system must have issued the Checkpoint A upload prompt before the transition offer is made. The prompt must have been presented and the BA must have responded to it. One of the following must be true: (a) ≥ 1 document has been uploaded and indexed at Checkpoint A — org chart, RACI matrix, stakeholder map, or responsibility assignment document — OR (b) BA has explicitly skipped via `SKIP` intent or stated no documents exist.
-
-**AC-S2-U2 (Decision Authority Evidence)** If `actors` contains a decision-maker whose identity was stated only in chat with no supporting document, the system flags that actor record with `evidence_type = chat_only`. This does not block transition but the actor will appear in the BRD with a `[UNVERIFIED — NO SOURCE DOCUMENT]` tag until a document is uploaded that corroborates their authority.
+**Document checkpoint (Checkpoint A):** The system asks whether an org chart, RACI matrix, stakeholder map, or responsibility document exists. If one is provided, the system reads it to verify and supplement what the BA described. Actors identified only in conversation, with no supporting document, are flagged in the final BRD so the client can verify them.
 
 ---
 
-### Transition: REQUIREMENT_ELICITATION → CONSTRAINT_CAPTURE
+### Phase 3 — Requirement Elicitation
 
-**AC-S3-1** `requirements` contains ≥ 5 draft entries.
+**Purpose:** Draw out the specific functional needs and non-functional expectations the system must meet.
 
-**AC-S3-2** At least 1 `functional` requirement and 1 `non_functional` requirement are present.
+This is typically the longest phase. The BA works through each stakeholder group and describes what they need the system to do. The system captures these as draft requirements — both functional (what the system must do) and non-functional (how fast, how secure, how available).
 
-**AC-S3-3** Every actor identified in STAKEHOLDER_DISCOVERY is referenced by ≥ 1 requirement in `affected_actors`.
+For every requirement, the system tracks where it came from: a direct statement by the BA, or a passage in an uploaded document. This provenance is non-negotiable — it is what makes the final BRD auditable.
 
-**AC-S3-4** Every requirement in `requirements` has either: a populated `source_chunks` array (from uploaded docs) OR is flagged as `human_stated = true` (came directly from chat, with session message ID as provenance).
+Before this phase closes:
 
-**AC-S3-5** `open_questions` of type `must_resolve` are ≤ 2.
+- At least five requirements have been captured.
+- At least one functional requirement and one non-functional requirement are present.
+- Every stakeholder identified in Phase 2 is referenced by at least one requirement.
+- Every requirement has a source — either a document passage or a direct statement from the BA.
+- No more than two open questions remain unresolved.
 
-**AC-S3-6** BA has confirmed the requirements list with `CONFIRM` intent.
-
-**AC-S3-U1 (Checkpoint B — Required Prompt Gate)** One of the following must be true: (a) ≥ 1 document has been uploaded at Checkpoint B — wireframes, mockups, process flow diagrams, existing feature lists, meeting notes, workshop outputs, or legacy system documentation — OR (b) BA has explicitly skipped.
-
-**AC-S3-U2 (Regulated Domain Hard Gate)** If `business_domain` is `fintech`, `healthcare`, or `government`: at least 1 source document must have been uploaded across all checkpoints to date, OR the BA must have explicitly stated "working from memory only" and this has been recorded in `session_state.memory_only_waiver = true`. This criterion does not block transition but must be evaluated and surfaced to the BA before confirming.
-
-**AC-S3-U3 (Architecture / Diagram Prompt — Triggered)** If any requirement references a UI, screen, dashboard, workflow, or system integration, the system must have prompted for a diagram or wireframe upload at Checkpoint B. If the BA declines, the requirement is marked `source_evidence = conversation_only` with a `confidence_modifier = -0.10`.
+**Document checkpoint (Checkpoint B):** The system asks for wireframes, process diagrams, meeting notes, workshop outputs, or any feature lists the client provided. Where a requirement references a workflow, UI, or system integration, the system specifically prompts for a diagram or mockup. If none is provided, that requirement is noted as conversation-only in the BRD.
 
 ---
 
-### Transition: CONSTRAINT_CAPTURE → ARCHITECTURE_ALIGNMENT
+### Phase 4 — Constraint Capture
 
-**AC-S4-1** At least 1 `Constraint` entity is present in `constraints`.
+**Purpose:** Pin down the real-world limits the solution must operate within.
 
-**AC-S4-2** One of the following is true: `timeline` constraint is captured, OR the BA has explicitly stated "no fixed timeline."
+Requirements describe what the system should do. Constraints describe what it cannot do, or what it must do regardless of cost. Timeline, budget, regulatory requirements, data residency rules, and security standards all belong here.
 
-**AC-S4-3** One of the following is true: `budget` range is captured (even approximate), OR the BA has explicitly stated "budget TBD."
+The system asks about each constraint type explicitly. It does not assume the BA will think to volunteer this information unprompted.
 
-**AC-S4-4** `compliance_flags` is populated (even if empty list — the BA was asked and responded).
+Before this phase closes:
 
-**AC-S4-5** `data_residency` preference is captured or explicitly deferred.
+- At least one constraint has been captured.
+- The timeline has been addressed — either a date or an explicit "no fixed deadline."
+- The budget range has been addressed — even approximately.
+- The BA has been asked about regulatory or compliance requirements and has responded.
+- The BA has been asked about data residency or data handling rules.
 
-**AC-S4-6** BA has confirmed the constraint register with `CONFIRM` intent.
-
-**AC-S4-U1 (Checkpoint C — Required Prompt Gate)** System must have issued the Checkpoint C upload prompt. One of the following must be true: (a) ≥ 1 document uploaded at Checkpoint C — compliance policy, security requirements document, data classification policy, vendor contract, infra specification — OR (b) BA has explicitly skipped.
-
-**AC-S4-U2 (Compliance Document Hard Gate)** If `compliance_flags` contains any of GDPR, HIPAA, SOC2, PCI-DSS, ISO 27001, FedRAMP: a compliance reference document must have been uploaded and indexed, OR the BA must explicitly state "no compliance documentation exists." A soft gate — does not block transition but must be surfaced and acknowledged.
-
----
-
-### Transition: ARCHITECTURE_ALIGNMENT → REVIEW_AND_SIGN_OFF
-
-**AC-S5-1** `decision_directions` contains a guided direction for: D-001 (language), D-002 (LLM selection), D-005 (database), D-011 (authentication), D-012 (connectors).
-
-**AC-S5-2** For each guided decision, the direction was derived from a BA answer — not assumed. The derivation mapping must be traceable (BA answer → decision direction).
-
-**AC-S5-3** BA has confirmed the decision direction summary with `CONFIRM` intent.
-
-**AC-S5-U1 (Existing Architecture — Triggered Hard Gate)** If at any prior point in the session the BA indicated an existing system, legacy platform, or prior technical implementation, and no architecture document was uploaded at Checkpoint C, the system must issue a final architecture upload prompt at the start of ARCHITECTURE_ALIGNMENT before any decision questions are asked.
+**Document checkpoint (Checkpoint C):** The system asks for compliance policies, security requirements documents, data classification policies, vendor contracts, or infrastructure specifications. For sessions in regulated industries — financial services, healthcare, government — at least one supporting document must be uploaded or the BA must explicitly confirm they are working from memory. This is not optional in regulated domains; it is surfaced as a required step before the phase closes.
 
 ---
 
-### Transition: REVIEW_AND_SIGN_OFF → SIGNED_OFF
+## How the System Handles Edge Cases
 
-**AC-S6-1** BRD draft has been generated and contains 0 requirements with `source_chunks = []` and `human_stated = false` (no orphan knowledge).
+**The BA wants to go back.** If the BA says "actually I need to change the stakeholders" or "can we revisit the problem statement," the system re-enters that phase, shows the BA what was captured there, and resumes from the last unanswered question. Nothing already captured is lost.
 
-**AC-S6-2** HLD diagram has been generated.
+**The BA wants to skip something.** If the BA does not know the answer to something — "I'll need to check with the client on the timeline" — the system records it as an open question and moves on. Open questions are surfaced in the final BRD so nothing falls through the cracks.
 
-**AC-S6-3** All `Conflict` objects in the session have `status = resolved_*`.
+**The BA wants to move on before everything is answered.** The system surfaces specifically what is still missing: *"We do not yet have a decision-maker identified and we have not been asked about external systems. Do you want to continue anyway?"* The BA can choose to proceed — their choice is recorded — but the system does not silently let gaps pass unacknowledged.
 
-**AC-S6-4** `open_questions` with `priority = must_resolve` is empty.
-
-**AC-S6-5** BA has given explicit BRD approval with `CONFIRM` intent on the BRD specifically.
-
-**AC-S6-6** `ClientSignOff` record has been created with `status = pending` and the sign-off token has been dispatched.
-
-**AC-S6-U1 (BRD Artifact Hard Gate)** The BRD export artifact must be generated, persisted to object storage, and have a valid `storage_uri` and `file_hash`.
-
-**AC-S6-U2 (HLD Artifact Hard Gate)** The High-Level Architecture Diagram must be generated and persisted. Both source (Mermaid) and rendered format must have valid `storage_uri` and `file_hash`.
-
-**AC-S6-U3 (Client Review Input — Checkpoint D)** One of the following must be true: (a) client review comments, prior BRD version, or reference material have been uploaded and any conflicts surfaced to the BA — OR (b) BA explicitly confirms "no client input to incorporate."
-
-**AC-S6-U4 (Sign-off Token Hard Gate)** `ClientSignOff.status = signed`. No waiver. `SIGNED_OFF` is unreachable until this record exists with status `signed`.
+**A document is uploaded mid-conversation.** The system processes it in the background, indexes it, and immediately re-evaluates what it now knows. A document uploaded in Phase 3 might resolve a question from Phase 2. The BA is notified.
 
 ---
 
-## 4a. Upload Gate Classification
+## What Sprint 1 Does Not Cover
 
-| Classification | Behaviour |
+Architecture Alignment, Review and Sign-Off, and the generation of the BRD and High-Level Architecture Diagram are Sprint 2 work. These phases depend on everything established in Phases 1–4, so they are a natural second sprint.
+
+Sprint 1 also does not include:
+- Voice and audio input (a later sprint once the text pipeline is proven)
+- Multi-user or collaborative sessions
+- Downstream connector push to Jira, Confluence, or similar tools
+- Client-facing UI — the API is built first; the interface comes after
+
+---
+
+## Engineering Companion Documents
+
+The following documents contain the technical design decisions that implement the BA experience described above. They are not BA-facing content — they are reference material for the engineering team building Sprint 1.
+
+| Document | What it covers |
 |---|---|
-| **HARD GATE** | Transition is unreachable until condition is met. No waiver. |
-| **REQUIRED PROMPT** | System must issue the upload prompt and receive a response before the transition offer. BA may skip. |
-| **TRIGGERED** | System detects a reference and asks. Non-blocking if BA declines; absence recorded in confidence metadata. |
-| **RECOMMENDED** | System prompts once; BA may skip; no confidence impact. |
+| [LLM_UNIVERSE.md](LLM_UNIVERSE.md) | Which AI models are used for which tasks, why, and at what cost — with fallback and budget rules |
+| [LLM_DESIGN_PATTERNS.md](LLM_DESIGN_PATTERNS.md) | How AI capabilities are loaded and injected into the session at runtime — the factory and lazy-loading architecture |
+
+The Rust state machine kernel built in Sprint 1 is documented at [docs/tech-docs/state-machine.md](../../tech-docs/state-machine.md).
 
 ---
 
-## 5. RAG Pipeline at Each State
+## Sprint 1 Exit Criteria
 
-| State | Query Construction | Documents in Scope |
-|---|---|---|
-| PROBLEM_INTAKE | None — no retrieval | No documents yet |
-| STAKEHOLDER_DISCOVERY | `{problem_statement} stakeholders actors roles responsibilities` | Checkpoint A uploads |
-| REQUIREMENT_ELICITATION | `{actor_name} needs requirements capabilities workflows` — one query per actor | Checkpoints A + B uploads |
-| CONSTRAINT_CAPTURE | `budget timeline compliance regulatory constraints {business_domain}` | All prior uploads |
-| ARCHITECTURE_ALIGNMENT | `{decision_id} {constraint_summary} {compliance_flags}` — one query per decision | DECISIONS.md + all uploads |
-| REVIEW_AND_SIGN_OFF | `{requirement_description} {source_chunk_ids}` — re-retrieval for BRD grounding | All session documents |
+Sprint 1 closes when:
 
-**Retrieval thresholds:** similarity floor 0.65, max 15 chunks per query, cross-encoder re-ranking before Guidance Generator.
+- A new BA session can move from Problem Intake all the way to a confirmed requirements list through conversation alone — no manual state manipulation required.
+- The system surfaces exactly one next question or transition offer at the end of every turn, without exception.
+- A document uploaded at Checkpoint B is indexed and retrievable within the same session, and requirements sourced from it carry traceable provenance.
+- A session in a regulated domain (financial services, healthcare, government) cannot close Phase 3 without at least one uploaded document or an explicit BA waiver.
+- The system correctly handles REVISIT requests — re-entering a prior phase without losing any captured data.
 
 ---
 
-## 6. Next-Step Guidance — The User-Facing Contract
-
-Every system response must follow this structure:
-
-```
-[Acknowledgment — 1 sentence]
-What you heard from the BA, paraphrased concisely.
-
-[Captured — 0 to 3 bullets]
-• What the system extracted and added to the session.
-• Shown only when new entities were captured.
-
-[Next question or transition offer — 1 sentence only]
-Exactly one clear action for the BA.
-```
-
----
-
-## 7. Priority Ladder
-
-### P1 — Must ship for Sprint 1 to close
-
-1. **Rust state machine kernel** — `SessionPhase` enum, `SessionState`, AC stubs, gate manager — **DONE**
-2. **LangGraph graph** — 7 state nodes, typed transitions, `SessionState` TypedDict
-3. **IntentClassifierAgent** — all 9 intent types, fast LLM, ≤ 200ms p99
-4. **EntityExtractorAgent** — extractors for PROBLEM_INTAKE and STAKEHOLDER_DISCOVERY
-5. **GapAnalyzerAgent** — conversational AC evaluation for AC-S1 and AC-S2 + upload AC for AC-S1-U1 and AC-S2-U1/U2
-6. **GuidanceGeneratorAgent** — acknowledge + capture + next-question format; streaming
-7. **Session state persistence** — write to PostgreSQL after every turn; session resumable after disconnect
-8. **Basic RAG retrieval** — dense vector search with mandatory tenant + session filters
-9. **Transition handler** — proposal → confirmation → state advance; graceful denial
-10. **Upload gate core** — REQUIRED PROMPT tracker, checkpoint templates A–D, TRIGGERED detector, waiver recording
-
-### P2 — Complete within Sprint 1 if P1 is stable
-
-11. **EntityExtractorAgent for REQUIREMENT_ELICITATION** — functional/NFR extraction per actor
-12. **EntityExtractorAgent for CONSTRAINT_CAPTURE** — constraint type, timeline, budget, compliance flags
-13. **GapAnalyzerAgent** — AC-S3 and AC-S4 evaluation including all upload AC
-14. **Document ingestion pipeline** — upload → PII scrub → chunk → embed → index; `UPLOAD_COMPLETE` event
-15. **HARD GATE evaluator** — blocks transition offer; surfaces specific resolution action
-16. **Regulated domain gate (AC-S3-U2)**
-17. **Hybrid search** — BM25 sparse + dense fusion (RRF)
-18. **Full loop: PROBLEM_INTAKE → CONSTRAINT_CAPTURE**
-
-### P3 — Stretch goals for Sprint 1 / entry items for Sprint 2
-
-19. **EntityExtractorAgent for ARCHITECTURE_ALIGNMENT**
-20. **BRD draft generator** — structured requirements → templated DOCX/Markdown
-21. **HLD generator** — Mermaid diagram from actors, integrations, and system components
-22. **Conflict detection**
-23. **Client sign-off token flow**
-24. **Cost circuit breaker**
-
----
-
-## 8. Epic Breakdown
-
-### EPIC-1: State Machine Core
-
-| Story | Points | P | Status |
-|---|---|---|---|
-| Rust kernel scaffold — `SessionPhase`, `SessionState`, AC stubs, gate manager, `cargo build` ✓ | 3 | 1 | Done |
-| Define `SessionState` TypedDict with all fields and default values (Python side) | 2 | 1 | Todo |
-| Implement LangGraph graph with 7 state nodes and wired edge conditions | 5 | 1 | Todo |
-| Implement transition handler: summary → await CONFIRM → advance | 3 | 1 | Todo |
-| Implement REVISIT handler: rollback to named state, present summary | 3 | 2 | Todo |
-| Implement SKIP handler: log open questions, flag priority | 2 | 2 | Todo |
-| Session persistence: write/read `SessionState` from PostgreSQL | 3 | 1 | Todo |
-| Wire gRPC server in Rust kernel (`tonic`) | 5 | 1 | Todo |
-
-### EPIC-2: Intent Classification
-
-| Story | Points | P |
-|---|---|---|
-| Build `IntentClassifierAgent` with 8-class output schema | 3 | 1 |
-| Prompt engineering: state-aware context in classifier prompt | 2 | 1 |
-| Add confidence threshold: escalate to `CLARIFICATION_REQUEST` if < 0.7 | 2 | 2 |
-| Integration test: 40 labeled test messages covering all 8 intent types | 3 | 1 |
-
-### EPIC-3: Entity Extraction
-
-| Story | Points | P |
-|---|---|---|
-| `ProblemStatementExtractor` — structured output schema + prompt | 3 | 1 |
-| `ActorExtractor` — name, role, authority, external_system flag | 3 | 1 |
-| `RequirementExtractor` — type, MoSCoW, description, affected_actors, AC candidates | 5 | 2 |
-| `ConstraintExtractor` — type, budget, timeline, compliance, data_residency | 3 | 2 |
-| `DecisionDirectionExtractor` — business Q → decision direction derivation | 5 | 3 |
-| Merge logic: new extractions merged into session state without overwriting human edits | 3 | 1 |
-
-### EPIC-4: Gap Analysis
-
-| Story | Points | P |
-|---|---|---|
-| Implement AC evaluator for AC-S1 (5 criteria, programmatic check) | 2 | 1 |
-| Implement AC evaluator for AC-S2 (5 criteria, programmatic check) | 2 | 1 |
-| Implement AC evaluator for AC-S3 (6 criteria, actor coverage check) | 3 | 2 |
-| Implement AC evaluator for AC-S4 (6 criteria) | 2 | 2 |
-| Implement AC evaluator for AC-S5 (3 criteria, decision traceability) | 3 | 3 |
-| Implement AC evaluator for AC-S6 (6 criteria, BRD + conflict + sign-off) | 5 | 3 |
-| Next-question selector: priority ordering when multiple AC unmet | 2 | 1 |
-
-### EPIC-5: RAG Pipeline
-
-| Story | Points | P |
-|---|---|---|
-| Dense retrieval with mandatory 4-filter query | 3 | 1 |
-| State-aware query construction per state | 2 | 1 |
-| Document ingestion pipeline: upload → PII scrub → chunk → embed → index | 5 | 2 |
-| `UPLOAD_COMPLETE` event fires on ingestion success; triggers AC re-evaluation | 2 | 2 |
-| Hybrid search: BM25 sparse vector + RRF fusion | 5 | 2 |
-| Cross-encoder re-ranker integration | 3 | 3 |
-
-### EPIC-6: Guidance Generation
-
-| Story | Points | P |
-|---|---|---|
-| Implement `GuidanceGeneratorAgent` with output schema enforcement | 3 | 1 |
-| Streaming response delivery to API layer | 3 | 1 |
-| Acknowledge + Captured + Next-step format via system prompt | 2 | 1 |
-| Transition offer format: summary + single yes/no question | 2 | 1 |
-| Regression test: responses never end without a next action | 2 | 1 |
-
-### EPIC-7: Upload Gate System
-
-| Story | Points | P |
-|---|---|---|
-| Upload AC registry: all 16 upload AC rules as evaluable conditions | 3 | 1 |
-| Checkpoint prompt templates: A, B, C, D | 2 | 1 |
-| REQUIRED PROMPT tracker in `SessionState` | 2 | 1 |
-| TRIGGERED condition detector: scan session messages for document references | 3 | 2 |
-| HARD GATE evaluator: block transition offer; surface resolution action | 3 | 2 |
-| Waiver recording: `compliance_doc_waiver`, `memory_only_waiver` in `SessionState` | 2 | 2 |
-| Regulated domain gate (AC-S3-U2): enforce ≥ 1 doc or waiver | 3 | 2 |
-| Trust tier downgrade on upload decline: apply `confidence_modifier` | 2 | 2 |
-
----
-
-## 9. Non-Goals for Sprint 1
-
-| Out of Scope | Rationale |
-|---|---|
-| BRD document generation | P3 stretch goal |
-| HLD diagram generation | P3 stretch goal |
-| Downstream connector push (Jira, Confluence) | Requires sign-off flow; Sprint 2 |
-| Multi-user collaboration | Sprint 3 |
-| Voice/audio input processing | Requires STT pipeline; deferred per D-014 |
-| Authentication and user management | Parallel infrastructure track |
-| Frontend / chat UI | Separate workstream; API-driven for now |
-| Cost circuit breakers | P3 stretch goal |
-
----
-
-## 10. Definition of Done
-
-Sprint 1 closes when all of the following are true:
-
-**Functional:**
-- [ ] A new BA session can be created and reach `CONSTRAINT_CAPTURE` via chat alone, with no manual state intervention.
-- [ ] The system surfaces exactly one next question or transition offer at the end of every turn.
-- [ ] The system correctly identifies all CONFIRM-type responses and advances the state only on confirmed transitions.
-- [ ] The system correctly identifies REVISIT intent and re-enters the prior state without losing captured data.
-- [ ] AC-S1, AC-S2, AC-S3, and AC-S4 are all evaluated after every relevant turn.
-- [ ] A document uploaded at Checkpoint B is chunked, embedded, and retrievable within the same session.
-- [ ] Requirements from uploaded documents carry `source_chunks` provenance; requirements from chat carry `human_stated = true`.
-- [ ] Checkpoint A prompt is issued before the STAKEHOLDER_DISCOVERY transition offer.
-- [ ] A session with `business_domain = healthcare` cannot transition without ≥ 1 uploaded document or an explicit waiver.
-
-**Quality:**
-- [ ] `IntentClassifier` test suite: ≥ 90% accuracy across 40 labeled messages.
-- [ ] `GuidanceGenerator` regression: 0 responses that end without a next action.
-- [ ] End-to-end latency (user message → streamed first token): p95 ≤ 3 seconds.
-- [ ] Session persistence: session fully resumable after simulated disconnect at any state.
-
-**Engineering:**
-- [ ] All LangGraph nodes are stateless — context loaded from `SessionState` at every invocation.
-- [ ] All LLM calls use pinned model versions.
-- [ ] All vector queries include all 4 mandatory filters (tenant, session, similarity threshold, limit).
-- [ ] RLS verified: two simultaneous sessions from different tenants cannot cross-read session state.
-- [ ] `LLMCallLog` written atomically for every agent invocation.
-
----
-
-> Chitragupt Sprint 1 — Core Engine · May 2026
+> Chitragupt · Sprint 1 · The Conversation Engine · May 2026

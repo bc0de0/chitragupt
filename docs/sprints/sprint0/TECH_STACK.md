@@ -1,7 +1,7 @@
 # Technical Stack — Chitragupt
 
-**Version:** 1.0 — Authoritative
-**Status:** Binding. Language assignments are architectural decisions. Changing the service language for any tier requires a new decision entry in `sprint0/DECISIONS.md`.
+**Version:** 1.1 — Sprint 0 Canonical
+**Status:** Binding. Language assignments are architectural decisions. Changing the service language for any tier requires a new decision entry in `DECISIONS.md`.
 
 ---
 
@@ -481,7 +481,7 @@ proto/
 
 ## 7. Shared Infrastructure
 
-All three services read from and write to the same PostgreSQL and Redis instances. Each service uses its own connection pool. No service issues queries to tables it does not own — enforcement is by convention and RLS (see `docs/architecture/DATABASE.md`).
+All three services read from and write to the same PostgreSQL and Redis instances. Each service uses its own connection pool. No service issues queries to tables it does not own — enforcement is by convention and RLS (see `DATABASE.md`).
 
 | Store | Owned By | Read By | Purpose |
 |---|---|---|---|
@@ -645,4 +645,4 @@ Model upgrades are treated as deployment events: tested against the evaluation d
 
 ---
 
-> Chitragupt Technical Stack · v1.0 · Authoritative · May 2026
+> Chitragupt Technical Stack · v1.1 · Sprint 0 Canonical · May 2026

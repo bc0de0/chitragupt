@@ -136,6 +136,12 @@
 **P-037**
 > we want to begin with the LLM orchestration build in our project in line with our sprint1 docs - first create the right python scaffolding + a YAML config for orchestration + model and a executor.py file only this is the core - dont touch the service layer or the rust bridge yet
 
+**P-038**
+> wonderful now we want to create playbooks - this is a picture perfect product management project we followed if you see can you point out what we did right and what wrong? dont do any edits or new files yet - just want to know if this methodology is truely amazing?
+
+**P-039**
+> amazing so now I will let you strategize we dont want anything left open - lets close sprint 0 completely but put the documents we need seperately in a respective folder maybe 15 is over kill lets do in 5-7 core docs but 100 coverage. Also once this is done validate everything we must be perfect before we proceed!
+
 ---
 
 > End of Prompt Trail • Chitragupt • May 2026

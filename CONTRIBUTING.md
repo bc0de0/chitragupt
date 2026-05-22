@@ -154,7 +154,7 @@ Breaking changes: append `!` to the type, e.g. `feat(proto)!: rename TurnRequest
 - **Formatter:** `black` (line length 88, default config). Run `black .` before committing.
 - **Import ordering:** `isort` with `--profile black`. Run `isort .` before committing.
 - **Type hints mandatory** on all function signatures. `mypy --strict` must pass on the `src/` directory.
-- **All LLM calls use pinned model versions.** No floating aliases like `claude-sonnet-latest`. See `docs/architecture/TECH_STACK.md` for the current pinned model IDs.
+- **All LLM calls use pinned model versions.** No floating aliases like `claude-sonnet-latest`. See `docs/sprints/sprint0/TECH_STACK.md` for the current pinned model IDs.
 - **Pydantic schemas for all LLM structured output.** No `json.loads` on raw LLM strings.
 - **Retry all LLM calls** with `tenacity` — exponential backoff, max 3 retries, different vendor on fallback.
 
@@ -215,7 +215,7 @@ Before opening a PR:
 - [ ] Proto changes include all three generated stub files committed together
 - [ ] New AC criteria are documented in `docs/sprints/sprint1/README.md`
 - [ ] New hard gates are documented in `tech-docs/state-machine.md`
-- [ ] No pinned model IDs changed without updating `docs/architecture/TECH_STACK.md`
+- [ ] No pinned model IDs changed without updating `docs/sprints/sprint0/TECH_STACK.md`
 
 ---
 
@@ -223,7 +223,7 @@ Before opening a PR:
 
 For questions about the system architecture, see:
 
-- `docs/architecture/TECH_STACK.md` — service design, data flow, library choices
+- `docs/sprints/sprint0/TECH_STACK.md` — service design, data flow, library choices
 - `tech-docs/state-machine.md` — state machine kernel deep-dive
 - `docs/sprints/sprint0/ARCHITECTURE.md` — trust hierarchy, invariants, engineering conventions
 - `docs/sprints/sprint1/README.md` — Sprint 1 priorities and epic breakdown

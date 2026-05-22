@@ -259,18 +259,16 @@ chitragupt/
 │
 ├── docs/
 │   ├── sprints/
-│   │   ├── sprint0/                Discovery & documentation phase
-│   │   │   ├── README.md           Sprint 0 overview and exit criteria
+│   │   ├── sprint0/                Foundation — all 7 canonical docs (Sprint 0 CLOSED)
+│   │   │   ├── README.md           Sprint 0 overview and exit criteria (COMPLETE)
 │   │   │   ├── BA_HITL_FLOW.md     7-phase BA conversation protocol
-│   │   │   ├── ARCHITECTURE.md     Trust hierarchy, invariants, engineering conventions
-│   │   │   └── DECISIONS.md        14 architectural decisions (tech stack, data layer, auth)
+│   │   │   ├── ARCHITECTURE.md     Trust hierarchy, confidence scoring, invariants, conventions
+│   │   │   ├── DECISIONS.md        14 decisions — all DECIDED or DEFERRED
+│   │   │   ├── TECH_STACK.md       Service design, libraries, model versions (authoritative)
+│   │   │   ├── ONTOLOGY.md         Complete data model — entity schemas, relationships
+│   │   │   └── DATABASE.md         Schema, RLS, pgvector, Redis, R2, migration strategy
 │   │   └── sprint1/
 │   │       └── README.md           Core engine: state machine + RAG pipeline
-│   ├── architecture/
-│   │   ├── TECH_STACK.md           Service design, libraries, model versions (authoritative)
-│   │   ├── ontology.md             Complete data model — entity schemas, relationships
-│   │   ├── DATABASE.md             Schema, RLS, pgvector indexing, migration strategy
-│   │   └── EPISTEMOLOGY.md         Knowledge acquisition rules — trust, confidence, conflict
 │   ├── diagrams/                   Mermaid concept diagrams (state machine, trust, pipeline)
 │   └── logs/
 │       └── prompt_trail.md         Append-only prompt registry (P-001 → current)
@@ -287,14 +285,13 @@ chitragupt/
 | Document | Audience | Purpose |
 |---|---|---|
 | [docs/tech-docs/state-machine.md](docs/tech-docs/state-machine.md) | Engineering | Complete technical reference for the Rust state machine kernel |
-| [docs/architecture/TECH_STACK.md](docs/architecture/TECH_STACK.md) | Engineering · Architecture | Service design, library choices, model versions, gRPC interfaces |
+| [docs/sprints/sprint0/TECH_STACK.md](docs/sprints/sprint0/TECH_STACK.md) | Engineering · Architecture | Service design, library choices, model versions, gRPC interfaces |
 | [docs/sprints/sprint0/BA_HITL_FLOW.md](docs/sprints/sprint0/BA_HITL_FLOW.md) | BA · PM | How BAs interact with the system phase by phase |
-| [docs/sprints/sprint0/DECISIONS.md](docs/sprints/sprint0/DECISIONS.md) | Engineering · Architecture | 14 architectural decisions — options, tradeoffs, status |
-| [docs/sprints/sprint0/ARCHITECTURE.md](docs/sprints/sprint0/ARCHITECTURE.md) | Engineering | Trust rules, invariants, coding and git conventions |
+| [docs/sprints/sprint0/DECISIONS.md](docs/sprints/sprint0/DECISIONS.md) | Engineering · Architecture | 14 architectural decisions — all DECIDED or DEFERRED (Sprint 0 closed) |
+| [docs/sprints/sprint0/ARCHITECTURE.md](docs/sprints/sprint0/ARCHITECTURE.md) | Engineering · AI/ML | Trust rules, confidence scoring, conflict protocol, invariants, conventions |
+| [docs/sprints/sprint0/ONTOLOGY.md](docs/sprints/sprint0/ONTOLOGY.md) | Engineering · Architecture | Complete entity schemas, relationships, and JSON contracts |
+| [docs/sprints/sprint0/DATABASE.md](docs/sprints/sprint0/DATABASE.md) | Engineering · DBA | Schema, RLS, pgvector indexing, Redis, R2, migration, data residency |
 | [docs/sprints/sprint1/README.md](docs/sprints/sprint1/README.md) | Engineering | Sprint 1 priorities, epics, acceptance criteria, definition of done |
-| [docs/architecture/ontology.md](docs/architecture/ontology.md) | Engineering · Architecture | Complete entity schemas, relationships, and JSON contracts |
-| [docs/architecture/EPISTEMOLOGY.md](docs/architecture/EPISTEMOLOGY.md) | Engineering · AI/ML | Knowledge acquisition, confidence scoring, conflict protocol |
-| [docs/architecture/DATABASE.md](docs/architecture/DATABASE.md) | Engineering · DBA | Schema, RLS, pgvector indexing, migration, data residency |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Engineering | Build, run, contribute — per-service setup and conventions |
 
 ---

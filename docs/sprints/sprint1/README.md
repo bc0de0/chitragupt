@@ -140,7 +140,7 @@ The following documents contain the technical design decisions that implement th
 | [LLM_DESIGN_PATTERNS.md](LLM_DESIGN_PATTERNS.md) | How AI capabilities are loaded and injected into the session at runtime — the factory and lazy-loading architecture |
 | [LLM_ORCHESTRATION.md](LLM_ORCHESTRATION.md) | LangGraph pipeline topology, node contracts, streaming architecture, retry policy, prompt caching strategy |
 | [LLM_DEGRADATION.md](LLM_DEGRADATION.md) | Budget-triggered and provider-error-triggered model degradation — the complete decision tree and BA notification rules |
-| [DATABASE.md](DATABASE.md) | Complete database strategy — PostgreSQL schema, pgvector hybrid search, Redis caching, S3 object storage, RLS and multi-tenancy |
+| [../sprint0/DATABASE.md](../sprint0/DATABASE.md) | Complete database strategy — PostgreSQL schema, pgvector hybrid search, Redis caching, R2 object storage, RLS and multi-tenancy |
 
 The Rust state machine kernel built in Sprint 1 is documented at [docs/tech-docs/state-machine.md](../../tech-docs/state-machine.md).
 

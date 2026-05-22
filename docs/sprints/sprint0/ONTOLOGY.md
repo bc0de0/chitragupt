@@ -1,8 +1,8 @@
 # Ontology: Entities and Relationships
 
-**Phase:** Product Discovery
-**Version:** 2.0 — Expanded
-**Purpose:** To define the complete structural grammar, data models, entity schemas, and relationships that Chitragupt will use to parse, understand, store, and manage business requirements. This document is the authoritative reference for the database schema, vector store metadata schema, and the API contract.
+**Phase:** Sprint 0 — Foundation
+**Version:** 2.0 — Canonical
+**Purpose:** Defines the complete structural grammar, data models, entity schemas, and relationships that Chitragupt will use to parse, understand, store, and manage business requirements. This document is the authoritative reference for the database schema, vector store metadata schema, and the API contract. The physical SQL implementation is in `DATABASE.md`.
 
 ---
 
@@ -298,8 +298,8 @@ A reusable completeness checklist and output structure for a specific industry v
 | `output_sections` | jsonb | ✅ | Ordered list of spec sections with descriptions |
 | `domain_glossary` | jsonb | — | Key terms and their domain-specific definitions |
 | `compliance_requirements` | string[] | — | Regulatory standards relevant to this domain |
-| `brd_sections` | jsonb | — | Ordered BRD section definitions mapping requirement types to BRD chapter layout (used by `BRDWriterAgentNode`) |
-| `hld_component_hints` | jsonb | — | System component categories to extract when generating the HLD (e.g., services, external integrations, data stores, actor swim-lanes) |
+| `brd_sections` | jsonb | — | Ordered BRD section definitions mapping requirement types to BRD chapter layout |
+| `hld_component_hints` | jsonb | — | System component categories to extract when generating the HLD |
 | `is_system_template` | boolean | ✅ | True = Chitragupt-provided; False = org-customized |
 | `owner_workspace_id` | UUID | — | Null for system templates; set for org-customized |
 
@@ -396,7 +396,7 @@ Record of every LLM API call made by any agent.
 | `project_id` | UUID | ✅ | |
 | `tenant_id` | UUID | ✅ | |
 | `agent_name` | string | ✅ | Which agent made the call |
-| `model_id` | string | ✅ | e.g., `claude-sonnet-4-6`, `gpt-4o` |
+| `model_id` | string | ✅ | e.g., `claude-sonnet-4-6`, `gemini-2.0-flash` |
 | `model_tier` | enum | ✅ | `fast`, `quality`, `premium` |
 | `prompt_tokens` | integer | ✅ | Input token count |
 | `completion_tokens` | integer | ✅ | Output token count |
@@ -426,8 +426,6 @@ Rolling cost aggregation per project — materialized view or computed on query.
 ---
 
 ### 1.8 Output & Sign-Off Entities
-
-These entities represent formalized output artifacts produced from an approved Specification and the client approval workflow that locks them.
 
 #### 1.8.1 `ExportArtifact`
 
@@ -461,7 +459,7 @@ A structured template that maps Specification contents into a formal Business Re
 | `sections` | jsonb | ✅ | Ordered section definitions (see sub-schema below) |
 | `cover_page_fields` | jsonb | — | Fields rendered on the cover page: project name, client, date, version, signatories |
 | `include_traceability_matrix` | boolean | ✅ | Whether to append a source-to-requirement traceability table |
-| `include_glossary` | boolean | ✅ | Whether to append the domain glossary from `DomainTemplate.domain_glossary` |
+| `include_glossary` | boolean | ✅ | Whether to append the domain glossary |
 | `is_system_template` | boolean | ✅ | True = Chitragupt-provided; False = org-customized |
 | `owner_workspace_id` | UUID | — | Null for system templates; set for org-customized copies |
 
@@ -705,4 +703,4 @@ The LangGraph state machine must serialize its state after each step. The canoni
 
 ---
 
-> End of Document • Chitragupt Ontology • v2.0 • May 2026
+> Chitragupt Ontology · v2.0 · Sprint 0 Canonical · May 2026

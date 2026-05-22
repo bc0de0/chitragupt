@@ -32,11 +32,12 @@ This rule applies to all sessions in this project, without exception.
 | Document | Purpose |
 |---|---|
 | `docs/sprints/sprint0/BA_HITL_FLOW.md` | BA onboarding protocol (7-phase HITL state machine) |
-| `docs/sprints/sprint0/DECISIONS.md` | All open architectural decisions |
-| `docs/sprints/sprint0/ARCHITECTURE.md` | Trust hierarchy, invariants, engineering conventions |
+| `docs/sprints/sprint0/DECISIONS.md` | All architectural decisions — all DECIDED or DEFERRED (Sprint 0 CLOSED) |
+| `docs/sprints/sprint0/ARCHITECTURE.md` | Trust hierarchy, confidence scoring, conflict protocol, invariants, engineering conventions |
+| `docs/sprints/sprint0/TECH_STACK.md` | Authoritative tech stack — Rust/Python/Go, libraries, model versions, gRPC contracts |
+| `docs/sprints/sprint0/ONTOLOGY.md` | Complete data model and entity schemas |
+| `docs/sprints/sprint0/DATABASE.md` | Database strategy — PostgreSQL + pgvector + Redis + R2, schemas, RLS, hybrid search |
 | `docs/sprints/sprint1/README.md` | Sprint 1 priorities, epics, AC definitions |
-| `docs/architecture/TECH_STACK.md` | Authoritative tech stack — Rust/Python/Go, libraries, model versions |
-| `docs/architecture/ontology.md` | Complete data model and entity schemas |
 | `docs/logs/prompt_trail.md` | Prompt registry (append-only) |
 | `docs/tech-docs/state-machine.md` | Deep-dive technical reference for the Rust state machine kernel |
 
@@ -56,6 +57,6 @@ This rule applies to all sessions in this project, without exception.
 ## What NOT to do
 
 - Do not create new documentation files unless the user explicitly asks for one.
-- Do not implement code for any component where the corresponding decision in `docs/sprints/sprint0/DECISIONS.md` is still OPEN.
-- Do not add orchestration middleware or framework-specific stubs — that decision is OPEN.
+- All decisions in `docs/sprints/sprint0/DECISIONS.md` are now DECIDED or DEFERRED — Sprint 0 is closed. Code may proceed for any component whose decision is DECIDED.
+- Do not introduce new ADR files — use `docs/sprints/sprint0/DECISIONS.md` as the single decisions document.
 - Do not introduce new ADR files — use `docs/sprints/sprint0/DECISIONS.md` as the single decisions document.

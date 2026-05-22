@@ -1,5 +1,7 @@
 # Sprint 0 — Discovery & Foundation
 
+**Status: CLOSED** — All exit criteria met. Sprint 1 is in progress.
+
 **What this sprint is about:** Before a single line of code is written, the team must understand the problem deeply enough to build the right thing. Sprint 0 is entirely devoted to that understanding. It produces knowledge, not software.
 
 ---
@@ -50,26 +52,29 @@ The final transition — from Review to Signed Off — requires a recorded clien
 
 ---
 
-## Decisions Made in Sprint 0
+## What Sprint 0 Produced
 
-Sprint 0 produced a set of architectural decisions that govern everything built in Sprint 1 and beyond. The full register is in [DECISIONS.md](DECISIONS.md). The decisions that have the most direct impact on the BA experience are:
+Seven canonical documents, all in this folder:
+
+| Document | What it contains |
+|---|---|
+| [BA_HITL_FLOW.md](BA_HITL_FLOW.md) | The definitive description of the seven-phase conversation — what happens in each phase, what checkpoints exist, and how the BA is guided through each transition |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | The trust model, confidence scoring, conflict protocol, temporal validity, epistemic language rules, and engineering invariants that underpin every system decision |
+| [DECISIONS.md](DECISIONS.md) | Every architectural decision made during discovery — all 14 entries are DECIDED or DEFERRED. No open questions remain. |
+| [TECH_STACK.md](TECH_STACK.md) | Three-service polyglot architecture (Rust / Python / Go), gRPC communication model, full library inventory, repo structure, and development setup |
+| [ONTOLOGY.md](ONTOLOGY.md) | Complete entity schemas, relationship cardinalities, vector metadata schema, and agent state contract |
+| [DATABASE.md](DATABASE.md) | Physical database strategy — PostgreSQL schema + ERD + RLS policies + hybrid search + Redis cache layer + R2 object storage + multi-tenancy enforcement |
+
+---
+
+## Key Decisions Made in Sprint 0
+
+Sprint 0 produced 14 architectural decisions that govern everything built in Sprint 1 and beyond. The full register with rationale is in [DECISIONS.md](DECISIONS.md). The decisions that most directly affect the BA experience:
 
 - **The system leads the conversation.** The BA answers; the system asks. The system never presents a blank prompt or an open-ended "what else?"
 - **One question per turn.** Every system response ends with exactly one clear action for the BA — a question, a confirmation request, or a transition offer. Never a list of questions. Never silence.
 - **Gaps are surfaced, not swallowed.** If the system detects that something essential is missing — an actor without a named authority, a requirement with no identified source — it asks about it explicitly before moving on.
 - **Trust levels are tracked.** Information extracted from uploaded documents is treated as more reliable than information stated only in chat. The system tracks this distinction and surfaces it in the final BRD.
-
----
-
-## What Sprint 0 Produced
-
-| Document | What it contains |
-|---|---|
-| [BA_HITL_FLOW.md](BA_HITL_FLOW.md) | The definitive description of the seven-phase conversation — what happens in each phase, what checkpoints exist, and how the BA is guided through each transition |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | The trust model, data confidence tiers, and engineering invariants that underpin every system decision |
-| [DECISIONS.md](DECISIONS.md) | Every architectural decision made during discovery, with status (decided or still open), the question being answered, and the rationale |
-
-The data model — the full schema of every entity the system captures — is maintained separately at [docs/architecture/ontology.md](../../architecture/ontology.md), because it evolves as implementation proceeds and should not be locked inside a sprint document.
 
 ---
 
@@ -83,17 +88,19 @@ Sprint 1 covers the first four phases: Problem Intake through Constraint Capture
 
 ---
 
-## Sprint 0 Exit Criteria
+## Sprint 0 Exit Criteria — COMPLETE ✓
 
-Sprint 0 is complete when the following are true:
+| Criterion | Status |
+|---|---|
+| All decisions in DECISIONS.md have reached DECIDED or DEFERRED status | ✅ D-001 through D-013 decided; D-014 deferred |
+| BA_HITL_FLOW.md reviewed and confirmed by BA team lead | ✅ |
+| ARCHITECTURE.md ratified by engineering lead | ✅ |
+| ONTOLOGY.md validated against outputs defined in BA_HITL_FLOW.md | ✅ |
+| TECH_STACK.md reviewed and library choices confirmed | ✅ |
+| DATABASE.md reviewed and storage strategy confirmed | ✅ |
 
-- All decisions in DECISIONS.md have reached a guided or decided state — no open questions that block Sprint 1 work
-- BA_HITL_FLOW.md has been reviewed and confirmed by the BA team lead
-- ARCHITECTURE.md has been ratified by the engineering lead
-- The data model in ontology.md has been validated against the outputs defined in BA_HITL_FLOW.md
-
-Sprint 1 begins immediately after all four criteria are met.
+Sprint 1 has begun.
 
 ---
 
-> Chitragupt · Sprint 0 · Discovery & Foundation · May 2026
+> Chitragupt · Sprint 0 · Discovery & Foundation · CLOSED · May 2026

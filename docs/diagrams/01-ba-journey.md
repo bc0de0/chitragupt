@@ -1,113 +1,69 @@
 # 01 — The BA Journey
 
-## What this is
-
-A Business Analyst starts a session with nothing but a problem in their head. Chitragupt leads them — one question at a time — through seven phases until a signed-off BRD and architecture diagram lands in the client's inbox. The BA never fills out a form. The system always knows what to ask next.
-
-This diagram shows the full journey, what gets captured at each phase, and where documents can be uploaded to improve confidence in the output.
+Chitragupt guides a Business Analyst from a raw problem description to a signed-off document — through conversation alone. No forms. No templates to fill in. Just questions and answers, one at a time.
 
 ---
 
-## The Journey
+## The Seven Phases
+
+Every session moves through seven phases in order. Each phase has a clear goal. The system does not advance until that goal is met and the BA confirms it.
 
 ```mermaid
-stateDiagram-v2
-    direction TB
+flowchart LR
+    A([🏁 Problem\nIntake]) --> B([👥 Stakeholder\nDiscovery])
+    B --> C([📋 Requirement\nElicitation])
+    C --> D([🚧 Constraint\nCapture])
+    D --> E([🏗 Architecture\nAlignment])
+    E --> F([✍️ Review &\nSign-Off])
+    F --> G([✅ Signed\nOff])
 
-    [*] --> ProblemIntake : Session starts
-
-    state ProblemIntake {
-        [*] --> [*]
-        note right of [*]
-            System asks: What problem are you solving?
-            Captures: problem statement, domain, affected users,
-            definition of success
-        end note
-    }
-
-    ProblemIntake --> StakeholderDiscovery : Problem confirmed ✓
-
-    state StakeholderDiscovery {
-        [*] --> [*]
-        note right of [*]
-            System asks: Who is involved?
-            Captures: actors, roles, decision authority,
-            external systems
-            📎 Upload: org chart, RACI
-        end note
-    }
-
-    StakeholderDiscovery --> RequirementElicitation : Actors confirmed ✓
-
-    state RequirementElicitation {
-        [*] --> [*]
-        note right of [*]
-            System asks: What does each actor need?
-            Captures: functional requirements, NFRs,
-            acceptance criteria, open questions
-            📎 Upload: wireframes, process docs
-        end note
-    }
-
-    RequirementElicitation --> ConstraintCapture : Requirements confirmed ✓
-    RequirementElicitation --> RequirementElicitation : BA requests revision
-
-    state ConstraintCapture {
-        [*] --> [*]
-        note right of [*]
-            System asks: What are the boundaries?
-            Captures: budget, timeline, compliance flags,
-            data residency, integration mandates
-            📎 Upload: compliance docs, infra specs
-        end note
-    }
-
-    ConstraintCapture --> ArchitectureAlignment : Constraints confirmed ✓
-
-    state ArchitectureAlignment {
-        [*] --> [*]
-        note right of [*]
-            System asks: Business-language tech questions
-            Captures: guided directions for key
-            architectural decisions
-            📎 Upload: existing architecture plans
-        end note
-    }
-
-    ArchitectureAlignment --> ReviewAndSignOff : Decisions guided ✓
-
-    state ReviewAndSignOff {
-        [*] --> [*]
-        note right of [*]
-            System generates: Draft BRD + HLD diagram
-            BA reviews, requests changes, approves
-            📎 Upload: client review comments
-        end note
-    }
-
-    ReviewAndSignOff --> RequirementElicitation : Revision requested
-    ReviewAndSignOff --> SignedOff : BA approves ✓
-
-    state SignedOff {
-        [*] --> [*]
-        note right of [*]
-            BRD and HLD locked
-            Client signs off
-            Export triggered
-        end note
-    }
-
-    SignedOff --> [*]
+    style A fill:#1565C0,color:#fff,stroke:none
+    style B fill:#1976D2,color:#fff,stroke:none
+    style C fill:#1E88E5,color:#fff,stroke:none
+    style D fill:#42A5F5,color:#212121,stroke:none
+    style E fill:#64B5F6,color:#212121,stroke:none
+    style F fill:#90CAF9,color:#212121,stroke:none
+    style G fill:#1B5E20,color:#fff,stroke:none
 ```
+
+> **Sprint 1** covers Phases 1–4. Architecture Alignment and Sign-Off are Sprint 2.
 
 ---
 
-## Key Rules
+## What One Phase Looks Like
 
-**The system always leads.** Every phase starts with the system asking a focused question, not the BA filling in a field.
+The session opens with the simplest possible question: *"What problem are you trying to solve?"* From there, the system leads — one question at a time — until four things are established. Then it asks the BA to confirm what it captured. Only then does it offer the next phase.
 
-**Transitions require confirmation.** The system presents a summary of what it captured and waits for the BA to say "yes, that's right" before advancing. The BA is never surprised by where the session ends up.
+```mermaid
+flowchart TD
+    OPEN([Session starts]) --> Q1[System: What problem\nis the client solving?]
+    Q1 --> A1[BA answers in own words]
+    A1 --> Q2[System: What kind\nof business is this?]
+    Q2 --> A2[BA answers]
+    A2 --> Q3[System: Who is\nmost affected?]
+    Q3 --> A3[BA answers]
+    A3 --> Q4[System: What does\nsuccess look like?]
+    Q4 --> A4[BA answers]
+    A4 --> SUM[System: Here is what I captured.\nDoes this look right?]
+    SUM -->|BA confirms| NEXT([Phase 2 begins])
+    SUM -->|BA corrects| Q1
+```
 
-**Uploads improve confidence, not gate progress.** Most uploads are optional — the BA can proceed without them. The system notes absences and lowers confidence scores on affected requirements. A few uploads are hard-blocked (e.g., the client signature to reach Signed Off).
+This same pattern repeats in every phase. The BA is never presented with a blank canvas.
 
-**Revision is always safe.** The BA can return to any prior phase at any time. Captured data is preserved; the session re-enters that phase and picks up from the last unanswered gap.
+---
+
+## What Happens When the BA Uploads a Document
+
+The BA can upload a document at any point — a brief, an org chart, meeting notes, a compliance policy. The system reads it immediately and adjusts what it knows. An uploaded document is evidence, not an attachment.
+
+```mermaid
+flowchart LR
+    UP([BA uploads\na document]) --> READ[System reads\nand indexes it]
+    READ --> COMPARE{Does it match\nwhat was said in chat?}
+    COMPARE -->|Confirms| BOOST[Requirement confidence\ngoes up ✅]
+    COMPARE -->|Contradicts| FLAG[Conflict surfaced\nBA resolves it]
+    COMPARE -->|Adds new info| ADD[New fact added\nto the session]
+```
+
+A session without any uploaded documents can still produce a BRD. Requirements sourced only from conversation will carry a lower confidence score and a visible warning tag in the final document.

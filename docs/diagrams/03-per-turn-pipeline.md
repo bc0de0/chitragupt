@@ -1,114 +1,59 @@
-# 03 — Per-Turn Pipeline
+# 03 — How the System Thinks on Every Turn
 
-## What this is
-
-Every time the BA sends a message, the system runs a five-step pipeline before responding. Each step has a single job. The output of one step feeds the next. The pipeline always ends with exactly one action for the BA: a question, a confirmation prompt, or a gate resolution request.
-
-This diagram shows what happens inside the system on each turn — in plain terms.
+Every time the BA sends a message, the system runs five steps before responding. The whole process takes under two seconds. The BA sees the response arriving word by word as it streams back.
 
 ---
 
 ## The Five Steps
 
-```mermaid
-flowchart TD
-    IN([BA sends a message]) --> S1
-
-    subgraph S1["Step 1 — Intent Classification\n⚡ Fast model · &lt; 200ms"]
-        IC[What is the BA trying to do?\nAnswer · Confirm · Skip · Revisit\nUpload signal · Correction · Question]
-    end
-
-    S1 --> S2
-
-    subgraph S2["Step 2 — Entity Extraction\n🔍 Standard model · state-aware"]
-        EE[Pull out the structured facts\nfrom what the BA just said.\nActors · Requirements · Constraints\nDecisions · Names · Numbers]
-    end
-
-    S2 --> S3
-
-    subgraph S3["Step 3 — Context Retrieval\n📚 Search uploaded documents"]
-        RAG[Find the most relevant chunks\nfrom documents uploaded this session.\nUsed to ground extracted facts\nand find supporting evidence.]
-    end
-
-    S3 --> S4
-
-    subgraph S4["Step 4 — Gap Analysis\n🔎 Standard model · AC evaluator"]
-        GA[Check: which acceptance criteria\nare still unmet for the current phase?\nPick the single highest-priority gap\nand form the next question.]
-    end
-
-    S4 --> S5
-
-    subgraph S5["Step 5 — Guidance Generation\n✍️ Premium model · streamed"]
-        GG[Write the response:\n1. Acknowledge what was said\n2. Show what was captured\n3. Ask exactly one next question\nor offer to advance the phase]
-    end
-
-    S5 --> OUT([Response streams to BA])
-```
-
----
-
-## What Each Step Produces
+Each step has one job and hands its result to the next step.
 
 ```mermaid
 flowchart LR
-    A[BA message\n'The admin needs to\nexport CSV reports'] -->|raw text| B
-
-    B[Intent Classifier] -->|ANSWER| C
-
-    C[Entity Extractor] -->|Actor: Admin\nRequirement: CSV export\nType: Functional| D
-
-    D[RAG Retrieval] -->|Chunk: Payment_Gateway_V2.pdf p4\nRelevance: 0.91\nContent: reconciliation report spec| E
-
-    E[Gap Analyzer] -->|AC met: FR extracted ✓\nAC unmet: no acceptance criteria yet\nNext question: what triggers the export?| F
-
-    F[Guidance Generator] -->|Got it — the Admin needs to export\nreconciliation reports as CSV.\n\n• Requirement added: FR-007\n• Source: Payment Gateway doc, p.4\n\nWhat should trigger the export —\na scheduled job or a manual action?| G
-
-    G([Response to BA])
+    IN([BA sends\na message]) --> S1[1️⃣ What did\nthey mean?]
+    S1 --> S2[2️⃣ What facts\nwere in it?]
+    S2 --> S3[3️⃣ What do\ndocuments say?]
+    S3 --> S4[4️⃣ What is\nstill missing?]
+    S4 --> S5[5️⃣ What should\nwe say next?]
+    S5 --> OUT([Response streams\nback to BA])
 ```
+
+| Step | What it does | How fast |
+|---|---|---|
+| 1 — Intent | Is the BA answering, confirming, correcting, skipping, or asking a question? | < 200ms |
+| 2 — Extract | Pull out structured facts: actors, requirements, constraints, numbers | ~500ms |
+| 3 — Retrieve | Search uploaded documents for anything relevant to what was just said | ~300ms |
+| 4 — Gaps | Which phase criteria are still unmet? What is the best next question? | ~400ms |
+| 5 — Generate | Write the response: acknowledge, show what was captured, ask one question | 1–3s (streamed) |
 
 ---
 
-## How Intent Changes the Route
-
-Not every message goes through all five steps the same way. The intent determines which path is taken.
+## A Real Example
 
 ```mermaid
 flowchart TD
-    MSG([BA message]) --> IC[Intent Classifier]
-
-    IC -->|ANSWER| EE[Entity Extractor\nthen full pipeline]
-    IC -->|CONFIRM| AC[AC Validator\ncheck if all AC met\nthen offer transition]
-    IC -->|SKIP| SK[Log open question\napply confidence impact\nthen next gap]
-    IC -->|REVISIT| RV[Load prior phase summary\nre-enter that phase\nskip to last unmet AC]
-    IC -->|UPLOAD SIGNAL| UP[Issue upload prompt\nor confirm upload checkpoint]
-    IC -->|CORRECTION| CR[Find the entity being corrected\noverwrite it\nmark prior version as overridden]
-    IC -->|QUESTION| QA[Answer the BA's question\nthen re-ask the current gap]
-
-    EE --> RAG[RAG Retrieval]
-    RAG --> GA[Gap Analyzer]
-    GA --> GG[Guidance Generator]
-    AC --> GG
-    SK --> GA
-    RV --> GG
-    UP --> GG
-    CR --> GA
-    QA --> GG
-
-    GG --> OUT([Response to BA])
+    MSG["BA says:\n'The admin needs to export CSV reports'"]
+    MSG --> INT["Step 1 — Intent: ANSWER\nThe BA is providing new information."]
+    INT --> EXT["Step 2 — Extracted:\nActor: Admin\nRequirement: CSV export\nType: Functional"]
+    EXT --> RET["Step 3 — Document match found:\nPayment_Gateway_V2.pdf, page 4\nReconciliation report specification\nRelevance: 0.91"]
+    RET --> GAP["Step 4 — Gap check:\nFunctional requirement captured ✓\nMissing: acceptance criteria\nBest next question: what triggers the export?"]
+    GAP --> RESP["Step 5 — Response:\n\nGot it — the Admin needs to export reconciliation reports as CSV.\n\n• Requirement added: FR-007\n• Source: Payment Gateway doc, page 4\n\nWhat should trigger the export —\na scheduled job or a manual action by the Admin?"]
 ```
 
 ---
 
-## The Response Contract
+## The Response Always Looks the Same
 
-No matter what path the pipeline takes, every response follows this structure. The Guidance Generator is constrained to produce exactly this — no walls of text, no open-ended rambling.
+No matter what the BA said, no matter which path the pipeline took, every response follows this structure. No walls of text. No multiple questions at once.
 
 ```
-Acknowledge   →  One sentence. What you heard, paraphrased.
-Captured      →  0 to 3 bullets. What was extracted and added to the session.
-               (omitted if nothing new was captured)
-Next action   →  One sentence only. A question, a transition offer,
-               or a gate resolution prompt.
+One sentence    →  What the system understood, paraphrased back.
+
+0 to 3 bullets  →  What was captured and added to the session.
+                   (left out if nothing new was captured this turn)
+
+One sentence    →  The single next action:
+                   a question, a transition offer, or a gate prompt.
 ```
 
-The BA always knows exactly what to do next. That is the guarantee this pipeline exists to deliver.
+The BA always knows exactly what to do next. That is the contract this pipeline exists to keep.

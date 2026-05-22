@@ -1,104 +1,68 @@
-# 02 — Hard Gates
+# 02 — Checkpoints and Gates
 
-## What this is
-
-A gate is a condition that must be resolved before the session can move forward. Without gates, the system could produce a signed BRD with no compliance documentation for a healthcare project, or lock a specification without a client signature. Gates prevent those outcomes.
-
-Not all gates are equal. Some stop the world. Some just ask a question. This document explains the four gate types and why each exists.
+The system enforces checkpoints. Some are questions it must ask before the session can move forward. Some are documents that must exist. One is a client signature. These are called **gates** — and not all gates are equal.
 
 ---
 
 ## The Four Gate Types
 
 ```mermaid
-quadrantChart
-    title Gate Types — How hard the block is vs. how often it fires
-    x-axis Fires Rarely --> Fires Often
-    y-axis Soft Block --> Hard Block
+flowchart TD
+    HARD["🔴  HARD GATE\nCannot proceed. Full stop.\nMust be resolved before anything else."]
+    REQ["🟠  REQUIRED PROMPT\nThe system must ask this question\nbefore offering to advance.\nThe BA can still answer no or skip."]
+    TRIG["🟡  TRIGGERED\nThe BA mentioned something that suggests\na relevant document exists.\nSystem asks once. BA can decline."]
+    REC["🟢  RECOMMENDED\nSystem suggests once.\nBA can ignore it entirely. No consequence."]
 
-    quadrant-1 Highest risk — handle first
-    quadrant-2 Critical but uncommon
-    quadrant-3 Low friction guardrails
-    quadrant-4 Common workflow nudges
-
-    HARD GATE: [0.15, 0.95]
-    REQUIRED PROMPT: [0.65, 0.55]
-    TRIGGERED: [0.45, 0.25]
-    RECOMMENDED: [0.80, 0.10]
+    HARD --- REQ --- TRIG --- REC
 ```
 
-| Gate Type | What it does | Can the BA skip it? |
+| Gate type | Can the BA skip it? | What happens if they do |
 |---|---|---|
-| **HARD GATE** | Transition is unreachable. Full stop. | No |
-| **REQUIRED PROMPT** | System must ask the question before offering to advance. BA may then say no. | Yes — but the question must be asked |
-| **TRIGGERED** | System detects a reference and asks. BA can decline. Decline is recorded. | Yes — confidence impact noted |
-| **RECOMMENDED** | System suggests once. BA may ignore entirely. | Yes — no impact |
+| HARD GATE | No | Session cannot advance — period |
+| REQUIRED PROMPT | Yes, after the question is asked | The decline is recorded |
+| TRIGGERED | Yes | Confidence on related requirements drops |
+| RECOMMENDED | Yes | No impact |
 
 ---
 
-## Why Hard Gates Exist
+## What the BA Sees When Trying to Advance
+
+When the BA says "let's move on," the system runs a silent checklist. From the BA's perspective, they just see the system's next message.
 
 ```mermaid
 flowchart TD
-    A([BA says: let's move on]) --> B{Any HARD GATE open?}
-
-    B -->|No| C{Any REQUIRED PROMPT\nnot yet issued?}
-    C -->|No| D{Conversational AC\nall met?}
-    D -->|No| E[Surface next gap\nAsk the missing question]
-    D -->|Yes| F[Present summary\nOffer transition]
-    F --> G{BA confirms?}
-    G -->|Yes| H([Advance to next phase])
-    G -->|No| E
-
-    C -->|Yes| I[Issue the checkpoint prompt\nbefore anything else]
-    I --> A
-
-    B -->|Yes| J{What kind of hard gate?}
-
-    J -->|BRD not generated| K[Generate BRD now\nThen re-evaluate]
-    J -->|Client signature pending| L[Show status:\nAwaiting signature from client email\nCannot proceed until signed]
-    J -->|Regulated domain —\nno source document| M[Surface:\nThis is a healthcare project.\nWe need at least one reference doc\nor an explicit waiver.]
-    J -->|Compliance flags —\nno compliance doc| N[Surface:\nGDPR is flagged but no compliance\ndoc has been attached.\nUpload or confirm none exists.]
-
-    K --> B
-    M --> O{BA uploads or waives?}
-    N --> O
-    O -->|Uploads| P[Ingest document\nRe-evaluate gates]
-    O -->|Explicit waiver| Q[Record waiver\nTag affected items\nRe-evaluate gates]
-    P --> B
-    Q --> B
+    TRY([BA: let's move to the next phase]) --> HG{Hard gate open?}
+    HG -->|Yes| BLOCK[System explains the one thing\nthat needs to be resolved and how]
+    BLOCK --> TRY
+    HG -->|No| RQ{Required question\nnot yet asked?}
+    RQ -->|Yes| ASK[System asks the\nrequired question]
+    ASK --> TRY
+    RQ -->|No| GAP{Essential gaps still open?}
+    GAP -->|Yes| PROBE[System asks\nthe missing question]
+    PROBE --> TRY
+    GAP -->|No| CONFIRM[System: Here is what we captured.\nReady to move on?]
+    CONFIRM -->|BA says yes| NEXT([Next phase])
+    CONFIRM -->|BA says no| PROBE
 ```
 
----
-
-## The Hard Gates in This System
-
-| Gate | Transition | Why it cannot be skipped |
-|---|---|---|
-| Client signature | Review → Signed Off | A BRD without a client signature is not a deliverable — it is a draft |
-| BRD artifact exists | Review → Signed Off | Cannot approve a document that has not been generated and stored |
-| HLD artifact exists | Review → Signed Off | The architecture diagram is a required deliverable, not optional |
-| Source document (regulated domain) | Elicitation → Constraints | Healthcare, fintech, and government requirements with zero grounding have unacceptable liability risk |
-| Existing architecture doc (if system exists) | Constraints → Alignment | Architecture decisions made without knowing the existing system will likely contradict it |
+The BA never sees an error message. They see one clear next step.
 
 ---
 
-## What Happens When a Gate Fires
+## The One Gate With No Workaround: Client Signature
 
-The system does not say "error." It surfaces exactly one resolution action — the simplest possible thing the BA can do to unblock progress.
+The final transition — from Review to Signed Off — requires a recorded client signature. No BA confirmation substitutes for it. A BRD without a client signature is a draft, not a deliverable.
 
 ```mermaid
 flowchart LR
-    A[HARD GATE fires] --> B[System identifies\nthe one action needed]
-    B --> C{Action type}
-    C -->|Upload needed| D[Show upload prompt\nwith specific doc type]
-    C -->|Generate artifact| E[Trigger generation\nautomatically]
-    C -->|Awaiting external| F[Show waiting state\nwith who holds the ball]
-    C -->|Waiver available| G[Offer explicit waiver\nwith consequence explained]
-    D --> H[Gate re-evaluated\nafter action]
-    E --> H
-    G --> H
-    F --> I[Notify BA\nwhen unblocked]
-```
+    REVIEW([Review &\nSign-Off phase]) --> GEN{BRD and HLD\nexist?}
+    GEN -->|No| AUTO[System generates\nthem automatically]
+    AUTO --> GEN
+    GEN -->|Yes| SEND[Sign-off token dispatched\nto client email]
+    SEND --> WAIT{Client signs?}
+    WAIT -->|Signed| LOCK([SIGNED OFF\nDeliverables locked\nSession closed])
+    WAIT -->|Not yet| STATUS[System shows:\nAwaiting signature\nfrom client@company.com]
+    STATUS --> WAIT
 
-The BA never sees a wall of errors. They see one message: what the gate is, and the single next step to resolve it.
+    style LOCK fill:#1B5E20,color:#fff,stroke:none
+```

@@ -282,9 +282,18 @@ chitragupt/
 
 ## Documentation Map
 
+### Technical Reference
+
+| Document | Service | Purpose |
+|---|---|---|
+| [docs/tech-docs/state-machine.md](docs/tech-docs/state-machine.md) | Rust | `SessionPhase` enum, AC system, gate types, `TransitionEngine`, gRPC interface |
+| [docs/tech-docs/ai-orchestration.md](docs/tech-docs/ai-orchestration.md) | Python | LangGraph pipeline, `PipelineExecutor`, `LLMFactory`, streaming, RAG, ingestion |
+| [docs/tech-docs/api-gateway.md](docs/tech-docs/api-gateway.md) | Go | Route table, WebSocket handler, JWT middleware, upload flow, sign-off flow |
+
+### Architecture & Strategy
+
 | Document | Audience | Purpose |
 |---|---|---|
-| [docs/tech-docs/state-machine.md](docs/tech-docs/state-machine.md) | Engineering | Complete technical reference for the Rust state machine kernel |
 | [docs/sprints/sprint0/TECH_STACK.md](docs/sprints/sprint0/TECH_STACK.md) | Engineering · Architecture | Service design, library choices, model versions, gRPC interfaces |
 | [docs/sprints/sprint0/BA_HITL_FLOW.md](docs/sprints/sprint0/BA_HITL_FLOW.md) | BA · PM | How BAs interact with the system phase by phase |
 | [docs/sprints/sprint0/DECISIONS.md](docs/sprints/sprint0/DECISIONS.md) | Engineering · Architecture | 14 architectural decisions — all DECIDED or DEFERRED (Sprint 0 closed) |

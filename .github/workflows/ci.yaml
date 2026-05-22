@@ -10,6 +10,8 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────────
   # Rust — state-machine kernel
   # Runs inside Docker: fmt check → clippy → 188 unit/integration tests
+  # Uses the runner's system Docker daemon (avoids buildx container-driver
+  # network isolation that prevents Docker Hub pulls).
   # ─────────────────────────────────────────────────────────────────────────────
   state-machine:
     name: State Machine (Rust)
@@ -18,17 +20,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
       - name: Build tester stage (fmt · clippy · tests)
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          target: tester
-          push: false
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+        run: docker build --target tester .
 
   # ─────────────────────────────────────────────────────────────────────────────
   # Python — AI / RAG orchestration  (enable when services/ai-orchestration exists)
@@ -38,16 +31,7 @@ jobs:
   #   runs-on: ubuntu-latest
   #   steps:
   #     - uses: actions/checkout@v4
-  #     - name: Set up Docker Buildx
-  #       uses: docker/setup-buildx-action@v3
-  #     - name: Build tester stage
-  #       uses: docker/build-push-action@v6
-  #       with:
-  #         context: services/ai-orchestration
-  #         target: tester
-  #         push: false
-  #         cache-from: type=gha
-  #         cache-to: type=gha,mode=max
+  #     - run: docker build --target tester services/ai-orchestration
 
   # ─────────────────────────────────────────────────────────────────────────────
   # Go — API gateway  (enable when services/api-gateway exists)
@@ -57,13 +41,4 @@ jobs:
   #   runs-on: ubuntu-latest
   #   steps:
   #     - uses: actions/checkout@v4
-  #     - name: Set up Docker Buildx
-  #       uses: docker/setup-buildx-action@v3
-  #     - name: Build tester stage
-  #       uses: docker/build-push-action@v6
-  #       with:
-  #         context: services/api-gateway
-  #         target: tester
-  #         push: false
-  #         cache-from: type=gha
-  #         cache-to: type=gha,mode=max
+  #     - run: docker build --target tester services/api-gateway

@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1
-
 # ── base: toolchain ───────────────────────────────────────────────────────────
 FROM rust:stable AS base
 WORKDIR /app

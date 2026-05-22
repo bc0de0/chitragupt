@@ -157,6 +157,9 @@
 **P-044**
 > now another folder with a generalized form of prompts that will work wonders in anthropic  modeled after our prompt trail that will guide a BA to ask the  right research questions and design a product end to end assuming anthropic claude has full access to jira or linear and a doc store like confluence or gitbook! this should have its own dir in doc dir
 
+**P-045**
+> wonderful and now a final dir in the docs dir for learning - this should have a complete  glossary  of terms both technical (backend and devops) specific and resources to understand and research deep topics like data structures, AI orchestration, frameworks like langraph etc this must also be exhaustive and the resources links should be validated to ensure they exist - this set of docs will evolve over time but they must be organized well!
+
 ---
 
 > End of Prompt Trail • Chitragupt • May 2026

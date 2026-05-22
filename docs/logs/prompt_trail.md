@@ -127,6 +127,15 @@
 **P-032**
 > error: use of `default` to create a unit struct … GateManager::default() … got this error again there is a dependency issue - lets make this docker first so that the githhub actions work without a issue - create the necessary docker files and then make changes to the ci accordingly ensure all test pass in docker and then push
 
+**P-035**
+> based on the LLM design patterns and universe docs in docs/sprint1 and existing state machine create another doc in sprint1 called database.md that specifies our entire db strategy - for structured, cached and vector storage consider our system docs and architecture while making the strategy
+
+**P-036**
+> we still need 2 more documents before we code this sprint #1 LLM model orchestration strategy (for eg langraph + openrouter etc) and #2 model selection with graceful degradation for now optimize the docs keeping in mind the project complexity, budget etc
+
+**P-037**
+> we want to begin with the LLM orchestration build in our project in line with our sprint1 docs - first create the right python scaffolding + a YAML config for orchestration + model and a executor.py file only this is the core - dont touch the service layer or the rust bridge yet
+
 ---
 
 > End of Prompt Trail • Chitragupt • May 2026

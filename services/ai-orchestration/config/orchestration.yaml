@@ -1,0 +1,118 @@
+# Chitragupt — AI Orchestration Configuration
+# All model IDs are pinned. No floating aliases. Change here propagates everywhere.
+# Budget thresholds and timeouts are per-session unless otherwise noted.
+
+orchestration:
+  pipeline:
+    # Per-node wall-time limits in milliseconds.
+    # Exceeding these returns a safe default and marks node_errors — does not abort.
+    # GuidanceGenerator timeout is generous because streaming BRDs can be long.
+    timeout_ms:
+      intent_classifier:    800
+      entity_extractor:     1500
+      rag_retrieval:        1000
+      gap_analyzer:         3000
+      guidance_generator:   20000
+
+  retry:
+    # Applies to all LLM API calls via tenacity.
+    # Retried: RateLimitError, APIStatusError (5xx), network timeouts.
+    # Not retried: AuthenticationError (401), BadRequestError (400).
+    max_attempts:       3
+    wait_min_seconds:   0.5
+    wait_max_seconds:   4.0
+    multiplier:         0.5         # exponential backoff coefficient
+
+  streaming:
+    # asyncio.Queue maxsize for the guidance token pipe between nodes and the gRPC servicer.
+    # 256 is enough for ~1000 tokens of buffering at typical token lengths.
+    token_queue_maxsize: 256
+
+  prompt_cache:
+    # Anthropic ephemeral cache. Target: ≥ 80% of input tokens served from cache.
+    # System prompt + phase instructions placed in cache_control: ephemeral block.
+    target_cache_ratio: 0.80
+
+# ---------------------------------------------------------------------------
+# Model assignments — source of truth for all LLM calls in this service.
+# Individual nodes read from here via OrchestrationConfig; never hardcode IDs.
+# ---------------------------------------------------------------------------
+models:
+  primary:
+    fast:       "claude-haiku-4-5-20251001"
+    standard:   "claude-sonnet-4-6"
+    premium:    "claude-opus-4-7"
+    embedding:  "voyage-large-2"
+    stt:        "whisper-1"
+
+  fallback:
+    # One cross-vendor fallback per primary tier.
+    # Activated when primary provider is circuit-broken (see degradation section).
+    anthropic:  "gemini-2.0-flash"     # covers fast, standard, premium fallback
+    voyage:     "text-embedding-3-small"  # same 1536-dim; mixed-model policy applies
+    openai_stt: "gemini-2.0-flash"     # audio mode
+
+  embedding:
+    dimension:  1536        # voyage-large-2 output dim — changing this requires full re-embed
+    batch_size: 128         # voyage batch API max per call
+
+  # Maps each LLMFeature to a model tier. Nodes read this to ask for the right tier.
+  # Degradation rules in the budget section override these at runtime.
+  function_map:
+    intent_classification:  fast
+    rag_synthesis:          fast
+    visual_understanding:   standard
+    chunk_boundary:         fast
+    chunk_metadata:         fast
+    embedding:              embedding
+    brd_generation:         premium
+    data_transformation:    fast
+    requirement_refinement: standard
+    speech_to_text:         stt
+    image_ocr:              standard
+    localization:           fast
+
+# ---------------------------------------------------------------------------
+# Budget guardrails — enforced by BudgetTracker on every LLM call.
+# ---------------------------------------------------------------------------
+budget:
+  session_limit_usd:        5.00    # hard cap — all LLM calls blocked at exhaustion
+  caution_threshold_usd:    3.00    # Opus → Sonnet; BA notified once
+  critical_threshold_usd:   4.50    # Sonnet → Haiku; BA notified again
+
+  # BRD generation quality floor — never degrades below this tier regardless of budget.
+  # "standard" = claude-sonnet-4-6. Using haiku for the final deliverable is unacceptable.
+  brd_min_model: standard
+
+# ---------------------------------------------------------------------------
+# Graceful degradation — provider health circuit breaker.
+# ---------------------------------------------------------------------------
+degradation:
+  # After this many sustained failures on a provider, mark it degraded.
+  failure_threshold:                    3
+
+  # How long (seconds) a degraded provider is skipped before retrying.
+  provider_circuit_breaker_seconds:     60
+
+  # How often (seconds) to re-check a degraded provider's health.
+  provider_health_check_interval_seconds: 60
+
+# ---------------------------------------------------------------------------
+# RAG retrieval parameters.
+# ---------------------------------------------------------------------------
+rag:
+  top_k:              20      # final number of chunks returned to GapAnalyzer
+  bm25_weight:        0.3     # weight for sparse BM25 score in hybrid fusion
+  dense_weight:       0.7     # weight for dense cosine similarity score
+  candidate_pool:     50      # ANN candidate pool size before re-ranking
+  rerank_top_k:       10      # top-k after cross-encoder re-rank
+
+# ---------------------------------------------------------------------------
+# Document ingestion pipeline parameters.
+# ---------------------------------------------------------------------------
+ingestion:
+  chunk_size_tokens:      512
+  chunk_overlap_tokens:   64
+  min_chunk_tokens:       50      # chunks shorter than this are merged with neighbours
+  pii_scrub_enabled:      true
+  embedding_batch_size:   128     # must not exceed voyage batch API limit

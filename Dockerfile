@@ -1,5 +1,5 @@
 # ── base: toolchain ───────────────────────────────────────────────────────────
-FROM rust:stable AS base
+FROM rust:1-slim AS base
 WORKDIR /app
 RUN rustup component add rustfmt clippy
 

@@ -151,6 +151,9 @@
 **P-042**
 > amazing now lets complete the tech docs to keep in line with what has been accompalished so far!
 
+**P-043**
+> now in /docs we build the most important section lets call it playbooks or something similar - this is a abstract a real project decisioning engine to conceptualize, philosophise, decide and build a product end to end like we did . This playbooks will be the source of work for all BAs and will be the raw material required to go from zero to a production grade system. Every small event must have a actionable reference in the playbook, every small decision be it architecture choices, AI or RAG pipelines, CI or the orchestration must help a non tech BA be able to reason and use this playbooks in their project workflows lets do this correctly. We dont want boring playbooks but real ones with actionable plans, interactive cheat sheets and quick templates and diagrams that are easy to understtand mermaid style. Lets do that and call it v0.x for now use the style and prompt trail we used for this project for planning the playbooks!
+
 ---
 
 > End of Prompt Trail • Chitragupt • May 2026

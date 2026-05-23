@@ -45,19 +45,19 @@ models:
     fast:       "anthropic/claude-haiku-4.5"
     standard:   "anthropic/claude-sonnet-4.6"
     premium:    "anthropic/claude-opus-4.7"
-    embedding:  "openai/text-embedding-3-small"  # via OpenRouter; swap to voyage-large-2 when VOYAGE_API_KEY is set
+    embedding:  "google/gemini-embedding-001"    # dim=3072, ctx=20000 — best on OpenRouter
     stt:        "openai/whisper-1"
 
   fallback:
     # One cross-vendor fallback per primary tier.
     # Activated when primary provider is circuit-broken (see degradation section).
-    anthropic:  "google/gemini-2.5-flash"        # covers fast, standard, premium fallback
-    embedding:  "openai/text-embedding-3-small"  # already primary; keep for schema compat
-    openai_stt: "google/gemini-2.5-flash"        # audio mode
+    anthropic:  "google/gemini-2.5-flash"       # covers fast, standard, premium fallback
+    embedding:  "openai/text-embedding-3-large" # dim=3072, same dimension as primary
+    openai_stt: "google/gemini-2.5-flash"       # audio mode
 
   embedding:
-    dimension:  1536        # voyage-large-2 output dim — changing this requires full re-embed
-    batch_size: 128         # voyage batch API max per call
+    dimension:  3072        # google/gemini-embedding-001 output dim (locked for this namespace)
+    batch_size: 128         # OpenRouter embeddings batch limit
 
   # Maps each LLMFeature to a model tier. Nodes read this to ask for the right tier.
   # Degradation rules in the budget section override these at runtime.

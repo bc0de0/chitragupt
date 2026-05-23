@@ -3,7 +3,7 @@
 **Generated:** 2026-05-23  
 **Sprint:** Sprint 1 (in progress)  
 **Probe:** `python scripts/test_connections.py`  
-**Result: 8 / 11 checks PASS**
+**Result: 8 / 11 checks PASS** · Remaining 3 are pgvector (Docker-first, deferred)
 
 ---
 
@@ -11,17 +11,17 @@
 
 | # | Check | Status | Latency | Detail |
 |---|---|---|---|---|
-| 1 | OpenRouter · Fast (Haiku 4.5) | **PASS** | 5.3 s | `anthropic/claude-haiku-4.5` → PONG |
-| 2 | OpenRouter · Standard (Sonnet 4.6) | **PASS** | 4.0 s | `anthropic/claude-sonnet-4.6` → PONG |
-| 3 | OpenRouter · Premium (Opus 4.7) | **PASS** | 3.8 s | `anthropic/claude-opus-4.7` → PONG |
-| 4 | OpenRouter · Fallback (Gemini 2.5 Flash) | **PASS** | 2.2 s | `google/gemini-2.5-flash` → PONG |
-| 5 | OpenRouter · Primary Embedding | **PASS** | 1.5 s | `openai/text-embedding-3-small` dim=1536 |
-| 6 | PostgreSQL · connection | **PASS** | 119 ms | PostgreSQL 18.2 on x86_64-windows |
-| 7 | PostgreSQL · pgvector extension | **FAIL** | — | Extension not installed on PG18 |
+| 1 | OpenRouter · Fast (Haiku 4.5) | **PASS** | 4.5 s | `anthropic/claude-haiku-4.5` → PONG |
+| 2 | OpenRouter · Standard (Sonnet 4.6) | **PASS** | 4.8 s | `anthropic/claude-sonnet-4.6` → PONG |
+| 3 | OpenRouter · Premium (Opus 4.7) | **PASS** | 3.2 s | `anthropic/claude-opus-4.7` → PONG |
+| 4 | OpenRouter · Fallback (Gemini 2.5 Flash) | **PASS** | 1.7 s | `google/gemini-2.5-flash` → PONG |
+| 5 | OpenRouter · Primary Embedding | **PASS** | 1.5 s | `google/gemini-embedding-001` dim=3072 ✓ |
+| 6 | PostgreSQL · connection | **PASS** | 180 ms | PostgreSQL 18.2 on x86_64-windows |
+| 7 | PostgreSQL · pgvector extension | **DEFERRED** | — | Docker image has it pre-installed |
 | 8 | PostgreSQL · table `documents` | **PASS** | — | migration 0002 applied |
-| 9 | PostgreSQL · table `document_chunks` | **FAIL** | — | Blocked by pgvector |
+| 9 | PostgreSQL · table `document_chunks` | **DEFERRED** | — | Needs pgvector (Docker) |
 | 10 | PostgreSQL · table `cost_log` | **PASS** | — | migration 0004 applied |
-| 11 | PostgreSQL · `hybrid_search()` function | **FAIL** | — | Blocked by pgvector |
+| 11 | PostgreSQL · `hybrid_search()` function | **DEFERRED** | — | Needs pgvector (Docker) |
 
 ---
 
@@ -29,18 +29,25 @@
 
 ### LLM Layer — 100% Operational
 
-All five model tiers live and reachable through OpenRouter.
+All five model tiers live and reachable through OpenRouter (25 embedding models catalogued,
+live-probed to select the best).
 
-| Tier | Model | Role |
-|---|---|---|
-| Fast | `anthropic/claude-haiku-4.5` | Intent classification, chunking, localization |
-| Standard | `anthropic/claude-sonnet-4.6` | Visual understanding, requirement refinement |
-| Premium | `anthropic/claude-opus-4.7` | BRD generation (quality floor) |
-| Fallback | `google/gemini-2.5-flash` | Cross-vendor circuit-breaker for all Anthropic tiers |
-| Embedding | `openai/text-embedding-3-small` | Document + query embeddings (dim=1536) |
+| Tier | Model | Dim | Ctx | Role |
+|---|---|---|---|---|
+| Fast | `anthropic/claude-haiku-4.5` | — | — | Intent classification, chunking, localization |
+| Standard | `anthropic/claude-sonnet-4.6` | — | — | Visual understanding, requirement refinement |
+| Premium | `anthropic/claude-opus-4.7` | — | — | BRD generation (quality floor) |
+| Fallback text | `google/gemini-2.5-flash` | — | — | Cross-vendor circuit-breaker |
+| **Embedding** | **`google/gemini-embedding-001`** | **3072** | **20 000** | Document + query embeddings |
+| Embed fallback | `openai/text-embedding-3-large` | 3072 | 8 192 | Same dimension — safe swap |
 
-All calls route through `https://openrouter.ai/api/v1` using the OpenAI-compatible
-`chat/completions` endpoint. Auth: `OPENROUTER_API_KEY` (set in `.env`).
+**Why `google/gemini-embedding-001`:** Largest context window (20 000 tokens) of any model
+on OpenRouter's embedding catalog — crucial for long BA documents. Same 3072-dim output as
+`text-embedding-3-large` so the fallback is a true zero-schema-change swap. $0.15/1M tokens.
+
+All calls route through `https://openrouter.ai/api/v1`. Embedding calls use the
+`/embeddings` endpoint; generation calls use `/chat/completions` (OpenAI-compatible).
+Auth: `OPENROUTER_API_KEY` (set in `.env`).
 
 ### Database — Partially Ready
 
@@ -110,27 +117,22 @@ is development convenience only.
 
 ---
 
-### FAIL-02 · `intfloat/e5-large-v2` not available on OpenRouter
+### NOTE · Embedding model selection — full OpenRouter catalog surveyed
 
-**Affected checks:** (would have been #5 if attempted)  
-**Root cause:** OpenRouter's current catalog (358 models, queried live) contains no
-dedicated embedding models. `intfloat/e5-large-v2` — a HuggingFace sentence-transformer
-model — is not listed. OpenRouter does expose OpenAI's embedding endpoint, which is why
-`openai/text-embedding-3-small` works.
+`intfloat/e5-large-v2` **IS** available on OpenRouter (queried via `?output_modalities=embeddings`
+— 25 models returned). Earlier probe used the wrong filter and returned zero results.
 
-**Resolution applied:** Primary embedding switched to `openai/text-embedding-3-small`
-(dim=1536, confirmed live, latency 1.5 s). This maintains embedding dimension compatibility
-with the vector store schema (which also expects 1536). Check #5 now passes.
+Live dimension probe across top candidates:
 
-**If `intfloat/e5-large-v2` is needed:** Run it locally via `sentence-transformers`:
-```python
-from sentence_transformers import SentenceTransformer
-model = SentenceTransformer("intfloat/e5-large-v2")
-embeddings = model.encode(["query: probe"])  # dim=1024 — requires schema change
-```
-Note: e5-large-v2 outputs **1024-dim** vectors, not 1536. Using it would require altering
-the `document_chunks.embedding` column type and rebuilding the HNSW index. Not recommended
-while the vector namespace is unfixed.
+| Model | Dim | Latency | Price/1M | Notes |
+|---|---|---|---|---|
+| `google/gemini-embedding-001` | 3072 | 1.4 s | $0.15 | **Selected** — largest ctx (20k) |
+| `openai/text-embedding-3-large` | 3072 | 1.2 s | $0.13 | Fallback — same dim |
+| `intfloat/e5-large-v2` | 1024 | 2.0 s | $0.01 | Available but 1024-dim (schema mismatch) |
+| `qwen/qwen3-embedding-8b` | 4096 | 1.2 s | $0.01 | 4096-dim (schema mismatch) |
+
+Vector schema updated to `vector(3072)` in migrations 0003 and 0005.
+No documents indexed yet so the dimension change is safe.
 
 ---
 
@@ -184,11 +186,12 @@ Target state after pgvector install: **11 / 11 PASS**.
 | `MODEL_FAST` | `anthropic/claude-haiku-4.5` |
 | `MODEL_STANDARD` | `anthropic/claude-sonnet-4.6` |
 | `MODEL_PREMIUM` | `anthropic/claude-opus-4.7` |
-| `MODEL_EMBEDDING` | `openai/text-embedding-3-small` |
+| `MODEL_EMBEDDING` | `google/gemini-embedding-001` (dim=3072) |
 | `MODEL_FALLBACK_ANTHROPIC` | `google/gemini-2.5-flash` |
 | `DATABASE_URL` | `postgresql+asyncpg://postgres:root@localhost:5432/chitragupt` |
 | `POSTGRES_PASSWORD` | `root` (local only — Docker uses its own secret) |
-| `VOYAGE_API_KEY` | Not set (embedding covered by OpenRouter) |
+| `PGVECTOR_DIMENSION` | `3072` (matches `google/gemini-embedding-001`) |
+| `VOYAGE_API_KEY` | Not set (covered by `google/gemini-embedding-001` via OpenRouter) |
 
 ---
 

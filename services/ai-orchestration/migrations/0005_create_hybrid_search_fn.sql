@@ -4,7 +4,7 @@
 -- Returns top_k results ordered by weighted hybrid score.
 --
 -- Parameters:
---   query_embedding  - voyage-large-2 embedding of the user query (vector(1536))
+--   query_embedding  - voyage-large-2 embedding of the user query (vector(3072))
 --   bm25_tokens      - BM25 term weights computed in Python: {"term": weight}
 --   p_workspace_id   - mandatory tenant isolation filter
 --   p_project_id     - mandatory session scope filter
@@ -13,7 +13,7 @@
 --   top_k            - number of results to return (default 20)
 
 CREATE OR REPLACE FUNCTION hybrid_search(
-    query_embedding  vector(1536),
+    query_embedding  vector(3072),
     bm25_tokens      jsonb,
     p_workspace_id   uuid,
     p_project_id     uuid,

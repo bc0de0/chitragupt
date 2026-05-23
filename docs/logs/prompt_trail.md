@@ -216,6 +216,9 @@ commercial or budget check coverage is unit, integration e2e and everything that
 **P-061**
 > Intfloat: E5-Large-v2 use this openrouter embedding model also so that it passes the test also and give a full readiness report in project root and what failed
 
+**P-062**
+> lets fix the embedding isssue and leave pgvector for now - we are a docker first solution so we dont need to worry here. Use the best embedding available on https://openrouter.ai/models?output_modalities=embeddings
+
 ---
 
 > End of Prompt Trail • Chitragupt • May 2026

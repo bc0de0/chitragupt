@@ -133,6 +133,7 @@ async def probe_openrouter_model(env_key: str, label: str) -> ProbeResult:
                     "X-Title": os.environ.get("OPENROUTER_SITE_NAME", "Chitragupt"),
                 },
             )
+            expected_dim = int(os.environ.get("PGVECTOR_DIMENSION", "3072"))
             t0 = time.monotonic()
             resp = await client.embeddings.create(
                 model=model_id,
@@ -140,8 +141,12 @@ async def probe_openrouter_model(env_key: str, label: str) -> ProbeResult:
             )
             lat = (time.monotonic() - t0) * 1000
             dim = len(resp.data[0].embedding) if resp.data else 0
-            return ProbeResult(name=name, ok=True, latency_ms=lat,
-                               detail=f"model={model_id}  dim={dim}")
+            ok = dim == expected_dim
+            return ProbeResult(
+                name=name, ok=ok, latency_ms=lat,
+                detail=f"model={model_id}  dim={dim} (expected {expected_dim})",
+                error="" if ok else f"dim mismatch: got {dim}, expected {expected_dim}",
+            )
         except Exception as exc:
             return ProbeResult(name=name, ok=False, error=str(exc)[:120])
 

@@ -210,6 +210,9 @@ commercial or budget check coverage is unit, integration e2e and everything that
 **P-059**
 > I have added the openrouter api key to the .env - test if all the models are available or not with a standard post request. Also ensure the postgres on my local is having pw as root and all the local configurations use that configurations first and then later when we build the docker image we can config all this in the docker config. Ensure the migrations are applied and works along with The full pipeline should work - LLMs, RAG and DB migrations should be applied if not create a report or log in /sprint1 what did not work and the probable casuse. Keep logging the prompt
 
+**P-060**
+> use available models in openrouter only for the LLM issues - pgvector we will solve later
+
 ---
 
 > End of Prompt Trail • Chitragupt • May 2026

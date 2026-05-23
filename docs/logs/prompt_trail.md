@@ -160,6 +160,9 @@
 **P-045**
 > wonderful and now a final dir in the docs dir for learning - this should have a complete  glossary  of terms both technical (backend and devops) specific and resources to understand and research deep topics like data structures, AI orchestration, frameworks like langraph etc this must also be exhaustive and the resources links should be validated to ensure they exist - this set of docs will evolve over time but they must be organized well!
 
+**P-046**
+> take a look at the exit criteria in the sprint1 doc and ensure all the exit criteria is met or not give a temp doc in /sprint1 for what remains
+
 ---
 
 > End of Prompt Trail • Chitragupt • May 2026

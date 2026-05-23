@@ -181,6 +181,17 @@
 **P-052**
 > lets finish block F no testing yet
 
+**P-053**
+> we want to expand the testing scope in sprint1 to also include the following - determinism of the llms
+edge cases
+quality of response
+state boundary conditions & gating logic
+code correctness tests
+code integration tests
+latency check
+context aware check
+commercial or budget check coverage is unit, integration e2e and everything that is required give a *.md doc in docs sprint1 dir as the plan of action
+
 ---
 
 > End of Prompt Trail • Chitragupt • May 2026

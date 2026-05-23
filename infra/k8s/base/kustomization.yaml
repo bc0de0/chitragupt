@@ -1,0 +1,22 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: chitragupt
+
+resources:
+  - namespace.yaml
+  - serviceaccount.yaml
+  - configmap.yaml
+  - state-machine/deployment.yaml
+  - state-machine/service.yaml
+  - state-machine/hpa.yaml
+  - ai-orchestration/deployment.yaml
+  - ai-orchestration/service.yaml
+  - ai-orchestration/hpa.yaml
+  - api-gateway/deployment.yaml
+  - api-gateway/service.yaml
+  - api-gateway/hpa.yaml
+
+commonLabels:
+  app.kubernetes.io/managed-by: kustomize
+  app.kubernetes.io/part-of: chitragupt

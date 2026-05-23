@@ -222,6 +222,12 @@ commercial or budget check coverage is unit, integration e2e and everything that
 **P-063**
 > now create all the test cases that we have defined in sprint1 in TEST_PLAN and update the ci.yaml accordingly
 
+**P-065**
+> create a cloud agnostic cd.yaml for this project ensuring primary providers to be either gcp, aws or azure. assume identity federation for auth, kubernatics or cloud run registery and serverless deployment. full cd pipeline please as infra as code - which can later be used with a adding to github secrets
+
+**P-064**
+> give a total LOC (lines of code) of the repository disregarding docs. Also at this stage give a realistic pre seed valuation of the current state of the repository  in realistic ways using the most latest valuation modeling methods used by JP Morgan etc
+
 ---
 
 > End of Prompt Trail • Chitragupt • May 2026

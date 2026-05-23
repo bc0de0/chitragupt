@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: state-machine
+  namespace: chitragupt
+  labels:
+    app.kubernetes.io/name: state-machine
+    app.kubernetes.io/component: kernel
+    app.kubernetes.io/part-of: chitragupt
+spec:
+  type: ClusterIP
+  selector:
+    app: state-machine
+  ports:
+    - name: grpc
+      port: 50051
+      targetPort: grpc
+      protocol: TCP

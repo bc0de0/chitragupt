@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: chitragupt-config
+  namespace: chitragupt
+data:
+  LOG_LEVEL: "info"
+  PYTHONUNBUFFERED: "1"
+  GRPC_STATE_MACHINE_ADDR: "state-machine:50051"
+  GRPC_ORCHESTRATION_ADDR: "ai-orchestration:50052"
+  API_GATEWAY_PORT: "8080"
+  DB_PORT: "5432"
+  REDIS_PORT: "6379"

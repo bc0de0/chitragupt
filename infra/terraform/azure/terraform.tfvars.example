@@ -1,0 +1,8 @@
+subscription_id    = "00000000-0000-0000-0000-000000000000"
+location           = "eastus"
+environment        = "staging"
+github_org         = "my-github-org"
+github_repo        = "chitragupt"
+db_password        = "CHANGE_ME"
+db_sku             = "B_Standard_B1ms"
+openrouter_api_key = "sk-or-CHANGE_ME"

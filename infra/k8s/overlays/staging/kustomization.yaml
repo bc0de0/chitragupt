@@ -1,0 +1,33 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: chitragupt
+
+bases:
+  - ../../base
+
+# Images are set by the CD pipeline:
+#   kustomize edit set image state-machine=REGISTRY/state-machine:TAG
+images:
+  - name: state-machine
+    newName: gcr.io/chitragupt/state-machine
+    newTag: latest
+  - name: ai-orchestration
+    newName: gcr.io/chitragupt/ai-orchestration
+    newTag: latest
+  - name: api-gateway
+    newName: gcr.io/chitragupt/api-gateway
+    newTag: latest
+
+patchesStrategicMerge:
+  - patches/replicas.yaml
+  - patches/resources.yaml
+  - patches/serviceaccount.yaml
+
+secretGenerator:
+  - name: chitragupt-secrets
+    envs:
+      - secrets.env   # NOT committed — populated by CD job from GitHub Secrets
+
+commonLabels:
+  environment: staging

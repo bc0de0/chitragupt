@@ -1,0 +1,9 @@
+project_id         = "my-gcp-project"
+region             = "us-central1"
+environment        = "staging"
+github_org         = "my-github-org"
+github_repo        = "chitragupt"
+db_tier            = "db-g1-small"
+db_password        = "CHANGE_ME"
+redis_memory_gb    = 1
+openrouter_api_key = "sk-or-CHANGE_ME"

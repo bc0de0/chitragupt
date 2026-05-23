@@ -1,0 +1,32 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: state-machine-pdb
+  namespace: chitragupt
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: state-machine
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: ai-orchestration-pdb
+  namespace: chitragupt
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: ai-orchestration
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: api-gateway-pdb
+  namespace: chitragupt
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: api-gateway

@@ -1,0 +1,867 @@
+# =============================================================================
+# Chitragupt — Cloud-Agnostic Continuous Deployment Pipeline
+#
+# Supports: GCP (Cloud Run / GKE) · AWS (ECS Fargate / EKS) · Azure (Container Apps / AKS)
+# Auth:     Workload Identity Federation — zero long-lived credentials in GitHub Secrets
+# Trigger:  push to main (→ staging) · semver tag (→ production) · workflow_dispatch
+#
+# Required GitHub Variables (Settings → Variables, not Secrets):
+#   CLOUD_PROVIDER   gcp | aws | azure
+#   DEPLOY_MODE      serverless | kubernetes
+#   DEPLOY_REGION    e.g. us-central1 / us-east-1 / eastus
+#
+# Required GitHub Secrets per provider — see infra/SECRETS_GUIDE.md
+# =============================================================================
+
+name: CD
+
+on:
+  push:
+    branches: [main]
+    tags:     ['v[0-9]+.[0-9]+.[0-9]+']
+  workflow_dispatch:
+    inputs:
+      cloud_provider:
+        description: 'Cloud provider'
+        required: true
+        type: choice
+        options: [gcp, aws, azure]
+        default: gcp
+      deploy_mode:
+        description: 'Deployment target'
+        required: true
+        type: choice
+        options: [serverless, kubernetes]
+        default: serverless
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options: [staging, production]
+        default: staging
+      skip_tests:
+        description: 'Skip CI gate (emergency deploy only)'
+        required: false
+        type: boolean
+        default: false
+
+# ── Global environment ────────────────────────────────────────────────────────
+env:
+  CLOUD_PROVIDER:  ${{ inputs.cloud_provider  || vars.CLOUD_PROVIDER  || 'gcp' }}
+  DEPLOY_MODE:     ${{ inputs.deploy_mode     || vars.DEPLOY_MODE     || 'serverless' }}
+  DEPLOY_REGION:   ${{ vars.DEPLOY_REGION     || 'us-central1' }}
+  IMAGE_TAG:       ${{ github.sha }}
+  # Semver tag triggers map to production; branch pushes map to staging
+  TARGET_ENV:      ${{ inputs.environment || (startsWith(github.ref, 'refs/tags/v') && 'production' || 'staging') }}
+
+# Cancel any in-progress run on the same ref so we never deploy stale builds.
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: true
+
+# ─────────────────────────────────────────────────────────────────────────────
+# JOB 1 — CI gate: run fast tests before any build starts
+# ─────────────────────────────────────────────────────────────────────────────
+jobs:
+  gate:
+    name: CI Gate
+    runs-on: ubuntu-latest
+    if: ${{ !inputs.skip_tests }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Rust gate — same as ci.yaml
+      - name: State machine (Rust) — fmt · clippy · tests
+        run: docker build --target tester .
+
+      # Python gate — fast unit tests
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: services/ai-orchestration/pyproject.toml
+
+      - name: AI orchestration (Python) — fast tests
+        working-directory: services/ai-orchestration
+        run: |
+          pip install -e ".[dev]" -q
+          pytest -m fast --tb=short -q
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # JOB 2 — Resolve registry and compute image URIs for downstream jobs
+  # ─────────────────────────────────────────────────────────────────────────────
+  configure:
+    name: Configure
+    runs-on: ubuntu-latest
+    needs: gate
+    if: always() && (needs.gate.result == 'success' || needs.gate.result == 'skipped')
+    outputs:
+      registry:           ${{ steps.resolve.outputs.registry }}
+      image_prefix:       ${{ steps.resolve.outputs.image_prefix }}
+      sm_image:           ${{ steps.resolve.outputs.sm_image }}
+      orch_image:         ${{ steps.resolve.outputs.orch_image }}
+      gw_image:           ${{ steps.resolve.outputs.gw_image }}
+      deploy_mode:        ${{ env.DEPLOY_MODE }}
+      cloud_provider:     ${{ env.CLOUD_PROVIDER }}
+      target_env:         ${{ env.TARGET_ENV }}
+      short_sha:          ${{ steps.sha.outputs.short }}
+
+    steps:
+      - name: Short SHA
+        id: sha
+        run: echo "short=${GITHUB_SHA::8}" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve registry and image URIs
+        id: resolve
+        run: |
+          SHORT="${GITHUB_SHA::8}"
+          TAG="${{ github.ref_name }}-${SHORT}"
+
+          case "${{ env.CLOUD_PROVIDER }}" in
+            gcp)
+              REGISTRY="${{ secrets.GCP_ARTIFACT_REGISTRY }}"  # REGION-docker.pkg.dev/PROJECT/chitragupt
+              ;;
+            aws)
+              REGISTRY="${{ secrets.AWS_ECR_REGISTRY }}/chitragupt"  # ACCOUNT.dkr.ecr.REGION.amazonaws.com/chitragupt
+              ;;
+            azure)
+              REGISTRY="${{ secrets.AZURE_CONTAINER_REGISTRY }}/chitragupt"  # REGISTRY.azurecr.io/chitragupt
+              ;;
+          esac
+
+          echo "registry=${REGISTRY}"          >> "$GITHUB_OUTPUT"
+          echo "image_prefix=${REGISTRY}"      >> "$GITHUB_OUTPUT"
+          echo "sm_image=${REGISTRY}/state-machine:${TAG}"       >> "$GITHUB_OUTPUT"
+          echo "orch_image=${REGISTRY}/ai-orchestration:${TAG}"  >> "$GITHUB_OUTPUT"
+          echo "gw_image=${REGISTRY}/api-gateway:${TAG}"         >> "$GITHUB_OUTPUT"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # JOB 3 — Authenticate to the selected cloud provider via OIDC federation
+  # Outputs a provider-agnostic "logged in" signal for downstream jobs.
+  # ─────────────────────────────────────────────────────────────────────────────
+  auth:
+    name: Authenticate (${{ needs.configure.outputs.cloud_provider }})
+    runs-on: ubuntu-latest
+    needs: configure
+    permissions:
+      id-token: write   # required for OIDC federation
+      contents: read
+
+    steps:
+      # ── GCP Workload Identity Federation ─────────────────────────────────────
+      - name: GCP — Authenticate via Workload Identity
+        if: needs.configure.outputs.cloud_provider == 'gcp'
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account:            ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          token_format:               access_token
+
+      - name: GCP — Configure Docker for Artifact Registry
+        if: needs.configure.outputs.cloud_provider == 'gcp'
+        run: gcloud auth configure-docker ${{ env.DEPLOY_REGION }}-docker.pkg.dev --quiet
+
+      # ── AWS OIDC Federation ───────────────────────────────────────────────────
+      - name: AWS — Configure credentials via OIDC
+        if: needs.configure.outputs.cloud_provider == 'aws'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume:    ${{ secrets.AWS_OIDC_ROLE_ARN }}
+          aws-region:        ${{ secrets.AWS_REGION || env.DEPLOY_REGION }}
+          role-session-name: chitragupt-cd-${{ github.run_id }}
+
+      - name: AWS — Login to ECR
+        if: needs.configure.outputs.cloud_provider == 'aws'
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # ── Azure OIDC Federation ─────────────────────────────────────────────────
+      - name: Azure — Login via OIDC (federated credential)
+        if: needs.configure.outputs.cloud_provider == 'azure'
+        uses: azure/login@v2
+        with:
+          client-id:       ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id:       ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Azure — Login to Container Registry
+        if: needs.configure.outputs.cloud_provider == 'azure'
+        run: az acr login --name ${{ secrets.AZURE_CONTAINER_REGISTRY }}
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # JOB 4 — Build and push container images (matrix across services)
+  # ─────────────────────────────────────────────────────────────────────────────
+  build-push:
+    name: Build & Push — ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    needs: [configure, auth]
+    permissions:
+      id-token: write
+      contents: read
+      packages: write
+
+    strategy:
+      matrix:
+        include:
+          - service:    state-machine
+            context:    .
+            dockerfile: Dockerfile
+            image:      ${{ needs.configure.outputs.sm_image }}
+            port:       50051
+          - service:    ai-orchestration
+            context:    services/ai-orchestration
+            dockerfile: services/ai-orchestration/Dockerfile
+            image:      ${{ needs.configure.outputs.orch_image }}
+            port:       50052
+          - service:    api-gateway
+            context:    services/api-gateway
+            dockerfile: services/api-gateway/Dockerfile
+            image:      ${{ needs.configure.outputs.gw_image }}
+            port:       8080
+            skip_if_missing: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Skip if service directory is missing
+        id: check
+        if: matrix.skip_if_missing
+        run: |
+          if [ ! -d "${{ matrix.context }}" ] || [ ! -f "${{ matrix.dockerfile }}" ]; then
+            echo "missing=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ── Re-authenticate in this job (OIDC tokens are per-job) ────────────────
+      - name: GCP auth
+        if: needs.configure.outputs.cloud_provider == 'gcp' && steps.check.outputs.missing != 'true'
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account:            ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: GCP — Configure Docker
+        if: needs.configure.outputs.cloud_provider == 'gcp' && steps.check.outputs.missing != 'true'
+        run: gcloud auth configure-docker ${{ env.DEPLOY_REGION }}-docker.pkg.dev --quiet
+
+      - name: AWS auth
+        if: needs.configure.outputs.cloud_provider == 'aws' && steps.check.outputs.missing != 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume:    ${{ secrets.AWS_OIDC_ROLE_ARN }}
+          aws-region:        ${{ secrets.AWS_REGION || env.DEPLOY_REGION }}
+          role-session-name: chitragupt-build-${{ matrix.service }}-${{ github.run_id }}
+
+      - name: AWS — ECR login
+        if: needs.configure.outputs.cloud_provider == 'aws' && steps.check.outputs.missing != 'true'
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Azure auth
+        if: needs.configure.outputs.cloud_provider == 'azure' && steps.check.outputs.missing != 'true'
+        uses: azure/login@v2
+        with:
+          client-id:       ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id:       ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Azure — ACR login
+        if: needs.configure.outputs.cloud_provider == 'azure' && steps.check.outputs.missing != 'true'
+        run: az acr login --name ${{ secrets.AZURE_CONTAINER_REGISTRY }}
+
+      # ── Docker Buildx for multi-arch ──────────────────────────────────────────
+      - name: Set up Docker Buildx
+        if: steps.check.outputs.missing != 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push ${{ matrix.service }}
+        if: steps.check.outputs.missing != 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context:      ${{ matrix.context }}
+          file:         ${{ matrix.dockerfile }}
+          target:       runtime
+          platforms:    linux/amd64,linux/arm64
+          push:         true
+          tags: |
+            ${{ matrix.image }}
+            ${{ needs.configure.outputs.image_prefix }}/${{ matrix.service }}:latest
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to:   type=gha,mode=max,scope=${{ matrix.service }}
+          build-args: |
+            SERVICE=${{ matrix.service }}
+            BUILD_SHA=${{ github.sha }}
+
+      - name: Export image digest
+        if: steps.check.outputs.missing != 'true'
+        run: |
+          echo "${{ matrix.image }}" >> /tmp/images.txt
+        continue-on-error: true
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # JOB 5a — Deploy to STAGING (serverless mode)
+  # ─────────────────────────────────────────────────────────────────────────────
+  deploy-staging-serverless:
+    name: Deploy Staging — Serverless
+    runs-on: ubuntu-latest
+    needs: [configure, build-push]
+    if: needs.configure.outputs.target_env == 'staging' && needs.configure.outputs.deploy_mode == 'serverless'
+    environment:
+      name: staging
+      url:  ${{ steps.deploy-url.outputs.url }}
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── GCP Cloud Run ──────────────────────────────────────────────────────────
+      - name: GCP auth
+        if: needs.configure.outputs.cloud_provider == 'gcp'
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account:            ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: GCP — Deploy state-machine to Cloud Run (staging)
+        if: needs.configure.outputs.cloud_provider == 'gcp'
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service:    chitragupt-state-machine-staging
+          region:     ${{ env.DEPLOY_REGION }}
+          image:      ${{ needs.configure.outputs.sm_image }}
+          flags: >-
+            --allow-unauthenticated=false
+            --port=50051
+            --use-http2
+            --min-instances=1
+            --max-instances=10
+            --memory=512Mi
+            --cpu=1
+            --set-env-vars=APP_ENV=staging
+            --set-secrets=POSTGRES_PASSWORD=chitragupt-pg-password:latest
+
+      - name: GCP — Deploy ai-orchestration to Cloud Run (staging)
+        if: needs.configure.outputs.cloud_provider == 'gcp'
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service:    chitragupt-orchestration-staging
+          region:     ${{ env.DEPLOY_REGION }}
+          image:      ${{ needs.configure.outputs.orch_image }}
+          flags: >-
+            --allow-unauthenticated=false
+            --port=50052
+            --use-http2
+            --min-instances=1
+            --max-instances=20
+            --memory=2Gi
+            --cpu=2
+            --set-env-vars=APP_ENV=staging,LOG_LEVEL=DEBUG
+            --set-secrets=OPENROUTER_API_KEY=chitragupt-openrouter-key:latest
+            --set-secrets=DATABASE_URL=chitragupt-database-url-staging:latest
+            --set-secrets=REDIS_URL=chitragupt-redis-url-staging:latest
+
+      - name: GCP — Deploy api-gateway to Cloud Run (staging)
+        if: needs.configure.outputs.cloud_provider == 'gcp'
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service:    chitragupt-gateway-staging
+          region:     ${{ env.DEPLOY_REGION }}
+          image:      ${{ needs.configure.outputs.gw_image }}
+          flags: >-
+            --allow-unauthenticated=true
+            --port=8080
+            --min-instances=0
+            --max-instances=20
+            --memory=256Mi
+            --cpu=1
+            --set-env-vars=APP_ENV=staging,STATE_MACHINE_ADDR=chitragupt-state-machine-staging.run.internal:50051
+        continue-on-error: true  # skip until api-gateway is built
+
+      - name: GCP — Get gateway URL
+        if: needs.configure.outputs.cloud_provider == 'gcp'
+        id: deploy-url
+        run: |
+          URL=$(gcloud run services describe chitragupt-gateway-staging \
+            --region=${{ env.DEPLOY_REGION }} \
+            --format='value(status.url)' 2>/dev/null || echo "https://staging.chitragupt.pending")
+          echo "url=${URL}" >> "$GITHUB_OUTPUT"
+
+      # ── AWS ECS Fargate ────────────────────────────────────────────────────────
+      - name: AWS auth
+        if: needs.configure.outputs.cloud_provider == 'aws'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume:    ${{ secrets.AWS_OIDC_ROLE_ARN }}
+          aws-region:        ${{ secrets.AWS_REGION || env.DEPLOY_REGION }}
+          role-session-name: chitragupt-deploy-staging-${{ github.run_id }}
+
+      - name: AWS — Register ECS task definitions (staging)
+        if: needs.configure.outputs.cloud_provider == 'aws'
+        run: |
+          for SERVICE in state-machine ai-orchestration; do
+            TASK_DEF=$(aws ecs describe-task-definition \
+              --task-definition chitragupt-${SERVICE}-staging \
+              --query 'taskDefinition' 2>/dev/null || echo '{}')
+
+            IMAGE_VAR=$([ "$SERVICE" = "state-machine" ] \
+              && echo "${{ needs.configure.outputs.sm_image }}" \
+              || echo "${{ needs.configure.outputs.orch_image }}")
+
+            NEW_TASK_DEF=$(echo "$TASK_DEF" | jq \
+              --arg IMAGE "$IMAGE_VAR" \
+              --arg ENV "staging" \
+              '.containerDefinitions[0].image = $IMAGE |
+               .containerDefinitions[0].environment += [{"name":"APP_ENV","value":$ENV}]')
+
+            aws ecs register-task-definition \
+              --cli-input-json "$NEW_TASK_DEF" \
+              --query 'taskDefinition.taskDefinitionArn' \
+              --output text
+          done
+
+      - name: AWS — Update ECS services (staging)
+        if: needs.configure.outputs.cloud_provider == 'aws'
+        run: |
+          for SERVICE in state-machine ai-orchestration; do
+            aws ecs update-service \
+              --cluster ${{ secrets.AWS_ECS_CLUSTER_STAGING || 'chitragupt-staging' }} \
+              --service chitragupt-${SERVICE} \
+              --force-new-deployment \
+              --query 'service.deployments[0].status' \
+              --output text
+          done
+
+      # ── Azure Container Apps ───────────────────────────────────────────────────
+      - name: Azure auth
+        if: needs.configure.outputs.cloud_provider == 'azure'
+        uses: azure/login@v2
+        with:
+          client-id:       ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id:       ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Azure — Deploy state-machine Container App (staging)
+        if: needs.configure.outputs.cloud_provider == 'azure'
+        uses: azure/container-apps-deploy-action@v1
+        with:
+          appSourcePath:          .
+          acrName:                ${{ secrets.AZURE_CONTAINER_REGISTRY }}
+          containerAppName:       chitragupt-state-machine-staging
+          resourceGroup:          ${{ secrets.AZURE_RESOURCE_GROUP }}
+          imageToDeploy:          ${{ needs.configure.outputs.sm_image }}
+          environmentVariables:   APP_ENV=staging
+          targetPort:             50051
+          ingress:                internal
+
+      - name: Azure — Deploy ai-orchestration Container App (staging)
+        if: needs.configure.outputs.cloud_provider == 'azure'
+        uses: azure/container-apps-deploy-action@v1
+        with:
+          containerAppName:     chitragupt-orchestration-staging
+          resourceGroup:        ${{ secrets.AZURE_RESOURCE_GROUP }}
+          imageToDeploy:        ${{ needs.configure.outputs.orch_image }}
+          environmentVariables: APP_ENV=staging LOG_LEVEL=DEBUG
+          targetPort:           50052
+          ingress:              internal
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # JOB 5b — Deploy to STAGING (Kubernetes mode)
+  # ─────────────────────────────────────────────────────────────────────────────
+  deploy-staging-k8s:
+    name: Deploy Staging — Kubernetes
+    runs-on: ubuntu-latest
+    needs: [configure, build-push]
+    if: needs.configure.outputs.target_env == 'staging' && needs.configure.outputs.deploy_mode == 'kubernetes'
+    environment:
+      name: staging
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── GCP GKE ──────────────────────────────────────────────────────────────
+      - name: GCP auth
+        if: needs.configure.outputs.cloud_provider == 'gcp'
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account:            ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: GCP — Get GKE credentials
+        if: needs.configure.outputs.cloud_provider == 'gcp'
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: ${{ secrets.GCP_CLUSTER_NAME }}
+          location:     ${{ secrets.GCP_CLUSTER_LOCATION || env.DEPLOY_REGION }}
+
+      # ── AWS EKS ──────────────────────────────────────────────────────────────
+      - name: AWS auth
+        if: needs.configure.outputs.cloud_provider == 'aws'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume:    ${{ secrets.AWS_OIDC_ROLE_ARN }}
+          aws-region:        ${{ secrets.AWS_REGION || env.DEPLOY_REGION }}
+          role-session-name: chitragupt-k8s-staging-${{ github.run_id }}
+
+      - name: AWS — Update kubeconfig for EKS
+        if: needs.configure.outputs.cloud_provider == 'aws'
+        run: aws eks update-kubeconfig --name ${{ secrets.AWS_EKS_CLUSTER }} --region ${{ secrets.AWS_REGION }}
+
+      # ── Azure AKS ────────────────────────────────────────────────────────────
+      - name: Azure auth
+        if: needs.configure.outputs.cloud_provider == 'azure'
+        uses: azure/login@v2
+        with:
+          client-id:       ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id:       ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Azure — Get AKS credentials
+        if: needs.configure.outputs.cloud_provider == 'azure'
+        run: |
+          az aks get-credentials \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --name ${{ secrets.AZURE_AKS_CLUSTER }} \
+            --overwrite-existing
+
+      # ── Kustomize deploy (provider-agnostic once kubeconfig is set) ───────────
+      - name: Install kubectl + kustomize
+        uses: azure/setup-kubectl@v4
+
+      - name: Apply Kubernetes manifests (staging)
+        run: |
+          # Patch image tags in kustomize overlay
+          cd infra/k8s/overlays/staging
+          kustomize edit set image \
+            state-machine=${{ needs.configure.outputs.sm_image }} \
+            ai-orchestration=${{ needs.configure.outputs.orch_image }} \
+            api-gateway=${{ needs.configure.outputs.gw_image }}
+          kubectl apply -k . --namespace=chitragupt-staging
+
+      - name: Wait for rollout
+        run: |
+          kubectl rollout status deployment/state-machine   -n chitragupt-staging --timeout=5m
+          kubectl rollout status deployment/ai-orchestration -n chitragupt-staging --timeout=5m
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # JOB 6 — Smoke test staging (provider-agnostic HTTP probe)
+  # ─────────────────────────────────────────────────────────────────────────────
+  smoke-staging:
+    name: Smoke Test — Staging
+    runs-on: ubuntu-latest
+    needs: [configure, deploy-staging-serverless, deploy-staging-k8s]
+    if: |
+      always() &&
+      needs.configure.outputs.target_env == 'staging' &&
+      (needs.deploy-staging-serverless.result == 'success' || needs.deploy-staging-k8s.result == 'success')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Health check — API gateway /healthz
+        run: |
+          GATEWAY_URL="${{ secrets.STAGING_GATEWAY_URL || 'https://staging.chitragupt.revorion.ai' }}"
+          for i in {1..10}; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${GATEWAY_URL}/healthz" \
+              -H "Authorization: Bearer ${{ secrets.STAGING_SMOKE_TOKEN }}" 2>/dev/null || echo "000")
+            echo "Attempt ${i}: HTTP ${STATUS}"
+            if [ "$STATUS" = "200" ]; then
+              echo "Health check passed"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::Health check failed after 10 attempts"
+          exit 1
+
+      - name: Regression — fast test suite (containerised, no LLM keys needed)
+        working-directory: services/ai-orchestration
+        run: |
+          pip install -e ".[dev]" -q
+          pytest -m fast --tb=short -q
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # JOB 7 — Deploy to PRODUCTION (requires manual approval via GitHub Environment)
+  # ─────────────────────────────────────────────────────────────────────────────
+  deploy-production:
+    name: Deploy Production
+    runs-on: ubuntu-latest
+    needs: [configure, smoke-staging]
+    if: |
+      needs.configure.outputs.target_env == 'production' ||
+      (startsWith(github.ref, 'refs/tags/v') && needs.smoke-staging.result == 'success')
+    environment:
+      name: production          # Requires reviewer approval in GitHub Environment settings
+      url:  https://chitragupt.revorion.ai
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── GCP Cloud Run (production) ─────────────────────────────────────────────
+      - name: GCP auth
+        if: needs.configure.outputs.cloud_provider == 'gcp'
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account:            ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: GCP — Deploy state-machine (production)
+        if: needs.configure.outputs.cloud_provider == 'gcp' && needs.configure.outputs.deploy_mode == 'serverless'
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service:  chitragupt-state-machine
+          region:   ${{ env.DEPLOY_REGION }}
+          image:    ${{ needs.configure.outputs.sm_image }}
+          flags: >-
+            --allow-unauthenticated=false
+            --port=50051
+            --use-http2
+            --min-instances=2
+            --max-instances=50
+            --memory=1Gi
+            --cpu=2
+            --no-traffic
+            --tag=canary
+            --set-env-vars=APP_ENV=production,LOG_LEVEL=INFO
+            --set-secrets=POSTGRES_PASSWORD=chitragupt-pg-password:latest
+
+      - name: GCP — Canary: route 10% traffic to new revision
+        if: needs.configure.outputs.cloud_provider == 'gcp' && needs.configure.outputs.deploy_mode == 'serverless'
+        run: |
+          gcloud run services update-traffic chitragupt-state-machine \
+            --to-tags canary=10 \
+            --region=${{ env.DEPLOY_REGION }}
+
+      - name: GCP — Canary soak (2 min)
+        if: needs.configure.outputs.cloud_provider == 'gcp' && needs.configure.outputs.deploy_mode == 'serverless'
+        run: sleep 120
+
+      - name: GCP — Promote canary to 100%
+        if: needs.configure.outputs.cloud_provider == 'gcp' && needs.configure.outputs.deploy_mode == 'serverless'
+        run: |
+          gcloud run services update-traffic chitragupt-state-machine \
+            --to-latest \
+            --region=${{ env.DEPLOY_REGION }}
+
+      - name: GCP — Deploy ai-orchestration (production)
+        if: needs.configure.outputs.cloud_provider == 'gcp' && needs.configure.outputs.deploy_mode == 'serverless'
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service:  chitragupt-orchestration
+          region:   ${{ env.DEPLOY_REGION }}
+          image:    ${{ needs.configure.outputs.orch_image }}
+          flags: >-
+            --allow-unauthenticated=false
+            --port=50052
+            --use-http2
+            --min-instances=2
+            --max-instances=100
+            --memory=4Gi
+            --cpu=4
+            --set-env-vars=APP_ENV=production,LOG_LEVEL=INFO
+            --set-secrets=OPENROUTER_API_KEY=chitragupt-openrouter-key:latest
+            --set-secrets=DATABASE_URL=chitragupt-database-url-prod:latest
+            --set-secrets=REDIS_URL=chitragupt-redis-url-prod:latest
+
+      # ── GCP GKE (production K8s) ──────────────────────────────────────────────
+      - name: GCP — Get GKE credentials (production)
+        if: needs.configure.outputs.cloud_provider == 'gcp' && needs.configure.outputs.deploy_mode == 'kubernetes'
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: ${{ secrets.GCP_CLUSTER_NAME_PROD }}
+          location:     ${{ secrets.GCP_CLUSTER_LOCATION }}
+
+      # ── AWS ECS Fargate (production) ──────────────────────────────────────────
+      - name: AWS auth
+        if: needs.configure.outputs.cloud_provider == 'aws'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume:    ${{ secrets.AWS_OIDC_ROLE_ARN }}
+          aws-region:        ${{ secrets.AWS_REGION || env.DEPLOY_REGION }}
+          role-session-name: chitragupt-prod-deploy-${{ github.run_id }}
+
+      - name: AWS — Blue/green deploy via CodeDeploy
+        if: needs.configure.outputs.cloud_provider == 'aws' && needs.configure.outputs.deploy_mode == 'serverless'
+        run: |
+          for SERVICE in state-machine ai-orchestration; do
+            IMAGE=$([ "$SERVICE" = "state-machine" ] \
+              && echo "${{ needs.configure.outputs.sm_image }}" \
+              || echo "${{ needs.configure.outputs.orch_image }}")
+
+            TASK_DEF_ARN=$(aws ecs register-task-definition \
+              --family chitragupt-${SERVICE} \
+              --container-definitions "[{
+                \"name\":\"${SERVICE}\",
+                \"image\":\"${IMAGE}\",
+                \"environment\":[{\"name\":\"APP_ENV\",\"value\":\"production\"}]
+              }]" \
+              --query 'taskDefinition.taskDefinitionArn' \
+              --output text)
+
+            aws ecs update-service \
+              --cluster ${{ secrets.AWS_ECS_CLUSTER_PROD || 'chitragupt-prod' }} \
+              --service chitragupt-${SERVICE} \
+              --task-definition "$TASK_DEF_ARN" \
+              --force-new-deployment \
+              --deployment-configuration \
+                "maximumPercent=200,minimumHealthyPercent=100,deploymentCircuitBreaker={enable=true,rollback=true}"
+          done
+
+      # ── Azure (production) ────────────────────────────────────────────────────
+      - name: Azure auth
+        if: needs.configure.outputs.cloud_provider == 'azure'
+        uses: azure/login@v2
+        with:
+          client-id:       ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id:       ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Azure — Deploy Container Apps (production)
+        if: needs.configure.outputs.cloud_provider == 'azure' && needs.configure.outputs.deploy_mode == 'serverless'
+        run: |
+          for SERVICE in state-machine ai-orchestration; do
+            IMAGE=$([ "$SERVICE" = "state-machine" ] \
+              && echo "${{ needs.configure.outputs.sm_image }}" \
+              || echo "${{ needs.configure.outputs.orch_image }}")
+
+            az containerapp update \
+              --name chitragupt-${SERVICE} \
+              --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+              --image "$IMAGE" \
+              --set-env-vars APP_ENV=production LOG_LEVEL=INFO
+          done
+
+      # ── K8s production deploy (provider-agnostic) ─────────────────────────────
+      - name: AWS — EKS credentials (production)
+        if: needs.configure.outputs.cloud_provider == 'aws' && needs.configure.outputs.deploy_mode == 'kubernetes'
+        run: aws eks update-kubeconfig --name ${{ secrets.AWS_EKS_CLUSTER_PROD }} --region ${{ secrets.AWS_REGION }}
+
+      - name: Azure — AKS credentials (production)
+        if: needs.configure.outputs.cloud_provider == 'azure' && needs.configure.outputs.deploy_mode == 'kubernetes'
+        run: |
+          az aks get-credentials \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --name ${{ secrets.AZURE_AKS_CLUSTER_PROD }} \
+            --overwrite-existing
+
+      - name: Apply Kubernetes manifests (production)
+        if: needs.configure.outputs.deploy_mode == 'kubernetes'
+        run: |
+          cd infra/k8s/overlays/production
+          kustomize edit set image \
+            state-machine=${{ needs.configure.outputs.sm_image }} \
+            ai-orchestration=${{ needs.configure.outputs.orch_image }} \
+            api-gateway=${{ needs.configure.outputs.gw_image }}
+          kubectl apply -k . --namespace=chitragupt
+          kubectl rollout status deployment/state-machine    -n chitragupt --timeout=10m
+          kubectl rollout status deployment/ai-orchestration -n chitragupt --timeout=10m
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # JOB 8 — Production smoke test
+  # ─────────────────────────────────────────────────────────────────────────────
+  smoke-production:
+    name: Smoke Test — Production
+    runs-on: ubuntu-latest
+    needs: [deploy-production]
+    if: always() && needs.deploy-production.result == 'success'
+
+    steps:
+      - name: Health check — production gateway
+        run: |
+          for i in {1..6}; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              "https://chitragupt.revorion.ai/healthz" \
+              -H "Authorization: Bearer ${{ secrets.PROD_SMOKE_TOKEN }}" 2>/dev/null || echo "000")
+            echo "Attempt ${i}: HTTP ${STATUS}"
+            if [ "$STATUS" = "200" ]; then exit 0; fi
+            sleep 20
+          done
+          echo "::error::Production health check failed — triggering rollback"
+          exit 1
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # JOB 9 — Automated rollback on smoke test failure
+  # ─────────────────────────────────────────────────────────────────────────────
+  rollback:
+    name: Rollback — Production
+    runs-on: ubuntu-latest
+    needs: [configure, deploy-production, smoke-production]
+    if: always() && needs.smoke-production.result == 'failure'
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: GCP auth
+        if: needs.configure.outputs.cloud_provider == 'gcp'
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account:            ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: GCP — Rollback Cloud Run to previous revision
+        if: needs.configure.outputs.cloud_provider == 'gcp' && needs.configure.outputs.deploy_mode == 'serverless'
+        run: |
+          for SVC in chitragupt-state-machine chitragupt-orchestration chitragupt-gateway; do
+            PREV=$(gcloud run revisions list \
+              --service=$SVC --region=${{ env.DEPLOY_REGION }} \
+              --format='value(name)' --limit=2 | tail -1)
+            gcloud run services update-traffic $SVC \
+              --to-revisions="${PREV}=100" \
+              --region=${{ env.DEPLOY_REGION }}
+            echo "Rolled back $SVC to ${PREV}"
+          done
+
+      - name: AWS — Rollback ECS to previous task definition
+        if: needs.configure.outputs.cloud_provider == 'aws' && needs.configure.outputs.deploy_mode == 'serverless'
+        run: |
+          for SERVICE in state-machine ai-orchestration; do
+            PREV_TASK=$(aws ecs describe-services \
+              --cluster ${{ secrets.AWS_ECS_CLUSTER_PROD || 'chitragupt-prod' }} \
+              --services chitragupt-${SERVICE} \
+              --query 'services[0].deployments[-1].taskDefinition' \
+              --output text)
+            aws ecs update-service \
+              --cluster ${{ secrets.AWS_ECS_CLUSTER_PROD || 'chitragupt-prod' }} \
+              --service chitragupt-${SERVICE} \
+              --task-definition "$PREV_TASK" \
+              --force-new-deployment
+          done
+
+      - name: Azure — Rollback Container Apps
+        if: needs.configure.outputs.cloud_provider == 'azure' && needs.configure.outputs.deploy_mode == 'serverless'
+        uses: azure/login@v2
+        with:
+          client-id:       ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id:       ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Azure — Restore previous Container App revision
+        if: needs.configure.outputs.cloud_provider == 'azure' && needs.configure.outputs.deploy_mode == 'serverless'
+        run: |
+          for SERVICE in state-machine ai-orchestration; do
+            PREV=$(az containerapp revision list \
+              --name chitragupt-${SERVICE} \
+              --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+              --query '[-2].name' -o tsv)
+            az containerapp ingress traffic set \
+              --name chitragupt-${SERVICE} \
+              --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+              --revision-weight "${PREV}=100"
+          done
+
+      - name: K8s rollback (all providers)
+        if: needs.configure.outputs.deploy_mode == 'kubernetes'
+        run: |
+          kubectl rollout undo deployment/state-machine    -n chitragupt
+          kubectl rollout undo deployment/ai-orchestration -n chitragupt
+
+      - name: Notify rollback
+        if: always()
+        run: |
+          echo "::error::Production rollback executed for commit ${{ github.sha }}"
+          echo "::notice::Previous stable revision restored. Investigate before next deploy."

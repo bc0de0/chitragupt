@@ -1,0 +1,92 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-orchestration
+  namespace: chitragupt
+  labels:
+    app.kubernetes.io/name: ai-orchestration
+    app.kubernetes.io/component: llm-pipeline
+    app.kubernetes.io/part-of: chitragupt
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ai-orchestration
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: ai-orchestration
+        app.kubernetes.io/name: ai-orchestration
+    spec:
+      serviceAccountName: chitragupt
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        fsGroup: 1001
+      terminationGracePeriodSeconds: 60  # longer — LLM calls can be slow
+      containers:
+        - name: ai-orchestration
+          image: ai-orchestration:latest  # replaced by kustomize overlay
+          imagePullPolicy: Always
+          ports:
+            - name: grpc
+              containerPort: 50052
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: chitragupt-config
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: chitragupt-secrets
+                  key: DATABASE_URL
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: chitragupt-secrets
+                  key: REDIS_URL
+            - name: OPENROUTER_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: chitragupt-secrets
+                  key: OPENROUTER_API_KEY
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "2000m"
+              memory: "1Gi"
+          readinessProbe:
+            exec:
+              command:
+                - python
+                - -c
+                - "import grpc; ch = grpc.insecure_channel('localhost:50052'); ch.close()"
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            exec:
+              command:
+                - python
+                - -c
+                - "import grpc; ch = grpc.insecure_channel('localhost:50052'); ch.close()"
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 3
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: ai-orchestration
+                topologyKey: kubernetes.io/hostname

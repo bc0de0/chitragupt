@@ -163,6 +163,9 @@
 **P-046**
 > take a look at the exit criteria in the sprint1 doc and ensure all the exit criteria is met or not give a temp doc in /sprint1 for what remains
 
+**P-047**
+> create a list of todos in sprint1 to finish the sprint and then move on. Add testing to the process and exit criteria for closure
+
 ---
 
 > End of Prompt Trail • Chitragupt • May 2026

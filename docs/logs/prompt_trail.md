@@ -166,6 +166,9 @@
 **P-047**
 > create a list of todos in sprint1 to finish the sprint and then move on. Add testing to the process and exit criteria for closure
 
+**P-048**
+> yes start A and B in parallel
+
 ---
 
 > End of Prompt Trail • Chitragupt • May 2026

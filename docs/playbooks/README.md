@@ -15,7 +15,7 @@ They were written by reverse-engineering the Chitragupt build — an agentic Bus
 
 ---
 
-## The Eight Playbooks
+## The Nine Playbooks
 
 | # | Playbook | The question it answers | When to use it |
 |---|---|---|---|
@@ -27,6 +27,7 @@ They were written by reverse-engineering the Chitragupt build — an agentic Bus
 | [PB-06](PB-06-state-machine.md) | State Machine & HITL | How do we model the user's journey with hard guarantees? | Sprint 1 design |
 | [PB-07](PB-07-delivery.md) | CI/CD & Delivery | How do we ship reliably, every time? | Sprint 1 parallel track |
 | [PB-08](PB-08-cheatsheets.md) | Master Cheat Sheet | What is the fastest answer to the question in front of me right now? | Anytime |
+| [PB-09](PB-09-testing.md) | Testing Strategy & QA | How do we know the system works — what tests, in what order, and what is "green"? | Sprint 1 and every sprint thereafter |
 
 ---
 

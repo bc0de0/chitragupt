@@ -195,6 +195,9 @@ commercial or budget check coverage is unit, integration e2e and everything that
 **P-054**
 > push to remote
 
+**P-055**
+> add the testing plan process to /playbooks as part of our standard BA process sops
+
 ---
 
 > End of Prompt Trail • Chitragupt • May 2026

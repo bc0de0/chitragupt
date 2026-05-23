@@ -210,7 +210,67 @@ CI (PB-07):
 
 ---
 
-## 10. The Five Principles (Always True)
+## 10. Testing Quick Decisions (PB-09)
+
+### Which test type should I write?
+
+| Situation | Test type | Key rule |
+|---|---|---|
+| Testing a parser, formatter, chunker, or evaluator with no external calls | **Unit** | Mock all I/O; must complete in < 100 ms |
+| Testing a gRPC boundary, DB query, or Redis call | **Integration** | Use Docker Compose test profile; mock the LLM only |
+| Testing a full BA conversation across phases | **E2E** | Real stack; assert on SSE events, not internal state |
+| Testing output quality against a labelled dataset | **Quality run** | Requires API keys; NOT a CI gate; runs on schedule |
+
+### LLM call testing — three rules
+
+```
+Rule 1: Never assert exact LLM output text in a test.
+        Assert structure (JSON schema), intent code, fallback behaviour.
+
+Rule 2: Always assert temperature=0 is sent in every non-streaming call.
+        Temperature drift is a silent regression that wrecks determinism.
+
+Rule 3: Test the parser separately from the LLM call.
+        Mock the response → test the parser.
+        Real call → test the structure (not the words).
+```
+
+### State boundary — always test three cases
+
+```
+For every gate or AC criterion:
+  N-1  → one condition short → assert BLOCKED / UNMET
+  N    → exactly at threshold → assert APPROVED / MET
+  Waiver (if -U optional) → explicitly waived → assert WAIVED + transition_ready=true
+```
+
+### Run mode quick ref
+
+| Mode | Command | Needs API keys | When it runs |
+|---|---|---|---|
+| fast | `pytest -m fast` | No | Every push (CI gate) |
+| quality | `pytest -m quality` | Yes | Scheduled weekly |
+| latency | `pytest -m latency` | Yes | Pre-release |
+| full | `pytest` | Yes | Major releases only |
+
+### Sprint 1 test exit criteria (9 total)
+
+```
+Fast mode (CI gate — must be green before merge):
+  [ ] 6. LLM parsers deterministic — same mocked response → same output × 3 runs
+  [ ] 7. All 15 edge cases handled without 5xx or panic
+  [ ] 8. Budget: 0.001 USD precision at 200 turns; Redis-down fallback works
+
+Recorded artefact (not a CI gate — run separately):
+  [ ] 9. p95 first-token SSE latency ≤ 5 000 ms (T-LAT-06)
+```
+
+Full test catalogue: [`docs/sprints/sprint1/TEST_PLAN.md`](../sprints/sprint1/TEST_PLAN.md)  
+Full testing SOP: [`PB-09 Testing Strategy & QA`](PB-09-testing.md)
+
+---
+
+## 11. The Five Principles (Always True)
 
 These are not guidelines. They are invariants.
 

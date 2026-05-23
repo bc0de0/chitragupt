@@ -201,6 +201,15 @@ commercial or budget check coverage is unit, integration e2e and everything that
 **P-056**
 > now let us start building the tests in TEST PLAN. lets write tests for domain #1 and #2 only with a single testing harness in ps1. The testing harness should be able to bootstrap all tests from dommain #1 t the last domain and lauch the entire suite of tests, log important observed events and produce a final test findings report. This harness excludes build tests (tests were full polygot builds are needed) like UAT or smoke tests
 
+**P-057**
+> we want to actually connect our models now and test if they can be called. We are using openrouter api - create a .env and .example.env file with appropriate system variables to declare our models from the LLM Universe and another variable for the api key.
+
+**P-058**
+> continue last prompt also ensure to include sql and other connection variables to the .env
+
+**P-059**
+> I have added the openrouter api key to the .env - test if all the models are available or not with a standard post request. Also ensure the postgres on my local is having pw as root and all the local configurations use that configurations first and then later when we build the docker image we can config all this in the docker config. Ensure the migrations are applied and works along with The full pipeline should work - LLMs, RAG and DB migrations should be applied if not create a report or log in /sprint1 what did not work and the probable casuse. Keep logging the prompt
+
 ---
 
 > End of Prompt Trail • Chitragupt • May 2026

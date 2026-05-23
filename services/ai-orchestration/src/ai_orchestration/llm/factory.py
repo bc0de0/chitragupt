@@ -1,8 +1,21 @@
 """LLMFactory — maps LLMFeature + BudgetStage to a configured client.
 
-Process-level singleton pattern: the underlying SDK instances (AsyncAnthropic,
-AsyncOpenAI, voyageai.Client) are created once and reused. LLMClient wrapper
-objects are lightweight and created per session feature.
+Process-level singleton pattern: the underlying SDK instances (AsyncOpenAI,
+voyageai.Client) are created once and reused. LLMClient wrapper objects are
+lightweight and created per session feature.
+
+IMPORTANT — OpenRouter is OpenAI-compatible only:
+  OpenRouter exposes /api/v1/chat/completions (OpenAI format) and does NOT
+  serve /messages (Anthropic format). All text-generation calls — including
+  Anthropic, Google, and OpenAI models — are routed through OpenRouter using
+  AsyncOpenAI pointed at OPENROUTER_BASE_URL.
+
+  Agent code that calls client.messages.create() (Anthropic SDK style) must be
+  migrated to client.chat.completions.create() (OpenAI SDK style). This is
+  tracked as a Sprint 1 task.
+
+  Voyage embeddings use the native Voyage API (VOYAGE_API_KEY) because Voyage
+  is not available on OpenRouter.
 
 See LLM_DESIGN_PATTERNS.md for the full pattern specification.
 See LLM_DEGRADATION.md for the provider circuit-breaker logic.
@@ -10,6 +23,7 @@ See LLM_DEGRADATION.md for the provider circuit-breaker logic.
 from __future__ import annotations
 
 import logging
+import os
 import time
 from typing import Any
 
@@ -54,24 +68,43 @@ class LLMFactory:
     _provider_degraded: dict[str, float] = {}
 
     @classmethod
+    def _openrouter_client(cls) -> Any:
+        """Shared OpenAI-SDK client pointed at OpenRouter for all text-generation calls.
+
+        OpenRouter is OpenAI-compatible only (chat/completions endpoint).
+        This single client handles all providers (Anthropic, Google, OpenAI) by
+        passing the appropriate model ID prefix (e.g. "anthropic/claude-sonnet-4-6").
+        """
+        if cls._openai is None:
+            from openai import AsyncOpenAI  # noqa: PLC0415
+            cls._openai = AsyncOpenAI(
+                base_url=os.environ["OPENROUTER_BASE_URL"],
+                api_key=os.environ["OPENROUTER_API_KEY"],
+                default_headers={
+                    "HTTP-Referer": os.environ.get("OPENROUTER_SITE_URL", ""),
+                    "X-Title": os.environ.get("OPENROUTER_SITE_NAME", "Chitragupt"),
+                },
+            )
+        return cls._openai
+
+    # Kept for backwards compatibility during agent migration to OpenAI SDK format.
+    # Remove once all agent code uses client.chat.completions.create().
+    @classmethod
     def _anthropic_client(cls) -> Any:
-        if cls._anthropic is None:
-            from anthropic import AsyncAnthropic  # noqa: PLC0415
-            cls._anthropic = AsyncAnthropic()  # reads ANTHROPIC_API_KEY from env
-        return cls._anthropic
+        return cls._openrouter_client()
 
     @classmethod
     def _openai_client(cls) -> Any:
-        if cls._openai is None:
-            from openai import AsyncOpenAI  # noqa: PLC0415
-            cls._openai = AsyncOpenAI()  # reads OPENAI_API_KEY from env
-        return cls._openai
+        return cls._openrouter_client()
 
     @classmethod
     def _voyage_client(cls) -> Any:
         if cls._voyage is None:
             import voyageai  # noqa: PLC0415
-            cls._voyage = voyageai.AsyncClient()  # reads VOYAGE_API_KEY from env
+            # Voyage is not on OpenRouter — uses native API with VOYAGE_API_KEY
+            cls._voyage = voyageai.AsyncClient(
+                api_key=os.environ["VOYAGE_API_KEY"],
+            )
         return cls._voyage
 
     @classmethod

@@ -39,18 +39,20 @@ orchestration:
 # ---------------------------------------------------------------------------
 models:
   primary:
-    fast:       "claude-haiku-4-5-20251001"
-    standard:   "claude-sonnet-4-6"
-    premium:    "claude-opus-4-7"
+    # All text-generation IDs are OpenRouter-prefixed (provider/model-id).
+    # Voyage embedding uses the native Voyage API — no prefix needed.
+    fast:       "anthropic/claude-haiku-4-5-20251001"
+    standard:   "anthropic/claude-sonnet-4-6"
+    premium:    "anthropic/claude-opus-4-7"
     embedding:  "voyage-large-2"
-    stt:        "whisper-1"
+    stt:        "openai/whisper-1"
 
   fallback:
     # One cross-vendor fallback per primary tier.
     # Activated when primary provider is circuit-broken (see degradation section).
-    anthropic:  "gemini-2.0-flash"     # covers fast, standard, premium fallback
-    voyage:     "text-embedding-3-small"  # same 1536-dim; mixed-model policy applies
-    openai_stt: "gemini-2.0-flash"     # audio mode
+    anthropic:  "google/gemini-2.0-flash"    # covers fast, standard, premium fallback
+    voyage:     "openai/text-embedding-3-small"  # same 1536-dim; mixed-model policy applies
+    openai_stt: "google/gemini-2.0-flash"    # audio mode
 
   embedding:
     dimension:  1536        # voyage-large-2 output dim — changing this requires full re-embed

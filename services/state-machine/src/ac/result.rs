@@ -29,6 +29,65 @@ pub struct AcResult {
 }
 
 impl AcResult {
+    /// Build an AcResult by evaluating each criterion against session state.
+    ///
+    /// `checks` — `(id, description, question, field_met)` tuples:
+    ///   - `field_met` is the result of a direct state field check.
+    ///   - A criterion whose id is already in `ac_met` is always Met regardless of `field_met`.
+    ///   - A criterion whose id is in `ac_waived` (and not in `ac_met`) is Waived.
+    ///
+    /// `transition_ready` is true when every non-optional criterion is Met or Waived.
+    /// Optional criteria have IDs containing "-U" (upload/optional checkpoints).
+    pub fn from_checks(
+        checks: Vec<(&str, &str, &str, bool)>,
+        ac_met: &[String],
+        ac_waived: &[String],
+    ) -> Self {
+        let mut criteria = Vec::new();
+        let mut gaps = Vec::new();
+
+        for (id, desc, question, field_met) in checks {
+            let explicitly_met = ac_met.iter().any(|m| m == id);
+            let waived = ac_waived.iter().any(|w| w == id);
+
+            let status = if explicitly_met || field_met {
+                AcStatus::Met
+            } else if waived {
+                AcStatus::Waived
+            } else {
+                AcStatus::Unmet
+            };
+
+            // Surface gaps for all unmet criteria (including optional -U ones).
+            // Optional criteria don't block transition but their suggested questions are still useful.
+            if status == AcStatus::Unmet {
+                gaps.push(AcGap {
+                    criterion_id: id.to_string(),
+                    description: desc.to_string(),
+                    suggested_question: question.to_string(),
+                });
+            }
+
+            criteria.push(AcCriterion {
+                id: id.to_string(),
+                description: desc.to_string(),
+                status,
+            });
+        }
+
+        // Optional (-U) criteria never block transition.
+        let transition_ready = criteria.iter().all(|c| {
+            c.id.contains("-U") || c.status == AcStatus::Met || c.status == AcStatus::Waived
+        });
+
+        AcResult {
+            criteria,
+            gaps,
+            transition_ready,
+        }
+    }
+
+    /// Convenience constructor: mark all criteria as unmet (used in tests and stubs).
     pub fn all_unmet(criteria: Vec<(&str, &str, &str)>) -> Self {
         let gaps: Vec<AcGap> = criteria
             .iter()

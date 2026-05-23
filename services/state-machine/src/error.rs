@@ -27,6 +27,9 @@ pub enum StateError {
     #[error("upload gate not satisfied: {gate_id}")]
     UploadGatePending { gate_id: String },
 
+    #[error("unknown entity type: {entity_type}")]
+    UnknownEntityType { entity_type: String },
+
     #[error("serialization error: {0}")]
     Serialization(#[from] serde_json::Error),
 }

@@ -29,6 +29,7 @@ from .agents.gap_analyzer import GapAnalyzerNode
 from .agents.guidance_generator import GuidanceGeneratorNode
 from .agents.intent_classifier import IntentClassifierNode
 from .agents.rag_retrieval import RAGRetrievalNode
+from .agents.revisit_handler import RevisitHandlerNode
 from .config import OrchestrationConfig
 from .llm.context import SessionLLMContext
 from .models.entities import AcUpdate, ChunkRef, Entity, GapResult
@@ -88,6 +89,12 @@ class PipelineAbortedError(Exception):
 # Graph construction
 # ---------------------------------------------------------------------------
 
+def _route_after_intent(state: PipelineState) -> str:
+    """Conditional router: REVISIT intent bypasses entity extraction and RAG."""
+    intent = state.get("intent") or ""
+    return "REVISIT" if intent == "REVISIT" else "default"
+
+
 def build_pipeline(config: OrchestrationConfig) -> CompiledGraph:
     """
     Construct and compile the LangGraph per-turn pipeline.
@@ -106,11 +113,19 @@ def build_pipeline(config: OrchestrationConfig) -> CompiledGraph:
     graph.add_node("retrieve_context",  RAGRetrievalNode(config))
     graph.add_node("analyze_gaps",      GapAnalyzerNode(config))
     graph.add_node("generate_guidance", GuidanceGeneratorNode(config))
+    graph.add_node("handle_revisit",    RevisitHandlerNode(config))
 
-    graph.add_edge("classify_intent",  "extract_entities")
+    # Happy path: linear through all 5 nodes
+    graph.add_conditional_edges(
+        "classify_intent",
+        _route_after_intent,
+        {"REVISIT": "handle_revisit", "default": "extract_entities"},
+    )
     graph.add_edge("extract_entities", "retrieve_context")
     graph.add_edge("retrieve_context", "analyze_gaps")
     graph.add_edge("analyze_gaps",     "generate_guidance")
+    # REVISIT skips entity extraction and RAG — jumps straight to guidance
+    graph.add_edge("handle_revisit",   "generate_guidance")
 
     graph.set_entry_point("classify_intent")
     graph.set_finish_point("generate_guidance")

@@ -1,14 +1,16 @@
+use chrono::Utc;
 use tracing::{info, warn};
 
 use crate::error::{Result, StateError};
 use crate::gates::manager::GateManager;
 use crate::state::phase::SessionPhase;
-use crate::state::session::SessionState;
+use crate::state::session::{RevisitRecord, SessionState};
 
 pub struct TransitionEngine;
 
 impl TransitionEngine {
-    /// Attempt to advance the session to `target`. Returns the updated state on success.
+    /// Attempt to advance the session to `target`. Returns Ok(()) on success.
+    /// Callers must apply `target` to `state.current_phase` after this returns Ok.
     pub fn attempt(
         state: &SessionState,
         target: SessionPhase,
@@ -26,7 +28,6 @@ impl TransitionEngine {
             });
         }
 
-        // Hard gates must be clear before any transition is attempted.
         let open_hard_gates = gate_manager.open_hard_gates(state);
         if !open_hard_gates.is_empty() {
             warn!(
@@ -39,7 +40,6 @@ impl TransitionEngine {
             });
         }
 
-        // AC for the current phase must be fully met.
         let ac = state.current_phase.evaluate_ac(state);
         if !ac.transition_ready {
             warn!(
@@ -58,6 +58,49 @@ impl TransitionEngine {
             to = %target,
             "phase transition approved"
         );
+
+        Ok(())
+    }
+
+    /// Re-enter a prior phase without clearing any captured data.
+    ///
+    /// Rules:
+    /// - SignedOff cannot be revisited (terminal).
+    /// - The target must differ from the current phase.
+    /// - All Vec fields are preserved — nothing is cleared.
+    /// - The revisit is recorded in `revisit_history`.
+    pub fn revisit(state: &mut SessionState, target: SessionPhase) -> Result<()> {
+        if target == SessionPhase::SignedOff {
+            return Err(StateError::InvalidTransition {
+                from: state.current_phase,
+                to: target,
+            });
+        }
+
+        if target == state.current_phase {
+            return Err(StateError::InvalidTransition {
+                from: state.current_phase,
+                to: target,
+            });
+        }
+
+        let record = RevisitRecord {
+            from_phase: state.current_phase,
+            to_phase: target,
+            at: Utc::now(),
+        };
+
+        info!(
+            session_id = %state.session_id,
+            from = %record.from_phase,
+            to = %record.to_phase,
+            "phase revisit — no data cleared"
+        );
+
+        state.revisit_history.push(record);
+        state.revisit_target = Some(target);
+        state.current_phase = target;
+        state.updated_at = Utc::now();
 
         Ok(())
     }

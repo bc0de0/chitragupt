@@ -45,14 +45,14 @@ models:
     fast:       "anthropic/claude-haiku-4.5"
     standard:   "anthropic/claude-sonnet-4.6"
     premium:    "anthropic/claude-opus-4.7"
-    embedding:  "voyage-large-2"
+    embedding:  "openai/text-embedding-3-small"  # via OpenRouter; swap to voyage-large-2 when VOYAGE_API_KEY is set
     stt:        "openai/whisper-1"
 
   fallback:
     # One cross-vendor fallback per primary tier.
     # Activated when primary provider is circuit-broken (see degradation section).
     anthropic:  "google/gemini-2.5-flash"        # covers fast, standard, premium fallback
-    voyage:     "openai/text-embedding-3-small"  # same 1536-dim; mixed-model policy applies
+    embedding:  "openai/text-embedding-3-small"  # already primary; keep for schema compat
     openai_stt: "google/gemini-2.5-flash"        # audio mode
 
   embedding:

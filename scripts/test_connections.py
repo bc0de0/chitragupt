@@ -91,7 +91,7 @@ OPENROUTER_MODELS = [
     ("MODEL_STANDARD",          "Standard (Sonnet)"),
     ("MODEL_PREMIUM",           "Premium (Opus)"),
     ("MODEL_FALLBACK_ANTHROPIC","Fallback (Gemini)"),
-    ("MODEL_FALLBACK_EMBEDDING","Fallback Embedding (OAI)"),
+    ("MODEL_EMBEDDING",         "Primary Embedding"),
 ]
 
 PROBE_PROMPT = "Reply with exactly the word: PONG"
@@ -121,9 +121,8 @@ async def probe_openrouter_model(env_key: str, label: str) -> ProbeResult:
     if not api_key:
         return ProbeResult(name=name, ok=False, error="OPENROUTER_API_KEY not set")
 
-    # For fallback embedding via OpenAI — text-embedding-3-small does not support
-    # chat completions; skip the chat probe and confirm model availability via list.
-    if env_key == "MODEL_FALLBACK_EMBEDDING":
+    # For embedding models — use the embeddings endpoint, not chat completions.
+    if env_key in ("MODEL_EMBEDDING", "MODEL_FALLBACK_EMBEDDING"):
         try:
             from openai import AsyncOpenAI  # type: ignore
             client = AsyncOpenAI(
@@ -269,14 +268,11 @@ async def probe_voyage() -> ProbeResult:
 async def main() -> int:
     report = Report()
 
-    # OpenRouter models (run concurrently)
+    # OpenRouter models (run concurrently) — includes primary embedding
     or_tasks = [probe_openrouter_model(k, label) for k, label in OPENROUTER_MODELS]
     or_results = await asyncio.gather(*or_tasks)
     for r in or_results:
         report.add(r)
-
-    # Voyage
-    report.add(await probe_voyage())
 
     # PostgreSQL
     pg_results = await probe_postgres()

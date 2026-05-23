@@ -213,6 +213,9 @@ commercial or budget check coverage is unit, integration e2e and everything that
 **P-060**
 > use available models in openrouter only for the LLM issues - pgvector we will solve later
 
+**P-061**
+> Intfloat: E5-Large-v2 use this openrouter embedding model also so that it passes the test also and give a full readiness report in project root and what failed
+
 ---
 
 > End of Prompt Trail • Chitragupt • May 2026

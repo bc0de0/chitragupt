@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package chitragupt.common;
+
+option go_package = "github.com/bc0de0/chitragupt/services/api-gateway/proto/common";
+
+// SessionStateProto — wire-format snapshot of Rust SessionState.
+// state_json carries the full JSON-serialised SessionState so Python can
+// deserialise it without listing every field here.
+message SessionStateProto {
+  string session_id    = 1;
+  string workspace_id  = 2;
+  string project_id    = 3;
+  string current_phase = 4;
+  int32  turn_count    = 5;
+  double total_cost_usd = 6;
+  repeated string ac_met             = 7;
+  repeated string ac_waived          = 8;
+  repeated string documents_indexed  = 9;
+  string state_json                  = 10; // full JSON blob for Python consumption
+}
+
+// EntityProto — extracted entity from the Python pipeline.
+message EntityProto {
+  string entity_type               = 1;
+  string value                     = 2;
+  float  confidence                = 3;
+  string source                    = 4; // conversation | document
+  repeated string source_chunk_ids = 5;
+}
+
+// AcUpdateProto — AC criterion status change reported by Python.
+message AcUpdateProto {
+  string criterion_id = 1;
+  bool   met          = 2;
+  string evidence     = 3;
+}
+
+// ChunkRefProto — a retrieved document chunk.
+message ChunkRefProto {
+  string chunk_id      = 1;
+  string content       = 2;
+  float  score         = 3;
+  string section_title = 4;
+  int32  page_number   = 5;
+  string document_id   = 6;
+  string source_type   = 7;
+}

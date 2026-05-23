@@ -65,3 +65,20 @@ impl std::fmt::Display for SessionPhase {
         write!(f, "{}", self.display_name())
     }
 }
+
+impl std::str::FromStr for SessionPhase {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "ProblemIntake" | "Problem Intake" => Ok(SessionPhase::ProblemIntake),
+            "StakeholderDiscovery" | "Stakeholder Discovery" => Ok(SessionPhase::StakeholderDiscovery),
+            "RequirementElicitation" | "Requirement Elicitation" => Ok(SessionPhase::RequirementElicitation),
+            "ConstraintCapture" | "Constraint Capture" => Ok(SessionPhase::ConstraintCapture),
+            "ArchitectureAlignment" | "Architecture Alignment" => Ok(SessionPhase::ArchitectureAlignment),
+            "ReviewAndSignOff" | "Review & Sign-Off" => Ok(SessionPhase::ReviewAndSignOff),
+            "SignedOff" | "Signed Off" => Ok(SessionPhase::SignedOff),
+            _ => Err(format!("unknown phase: {s}")),
+        }
+    }
+}

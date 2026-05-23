@@ -1,10 +1,9 @@
-use tracing::info;
-use uuid::Uuid;
+use std::net::SocketAddr;
 
-use chitragupt_state_machine::gates::manager::GateManager;
-use chitragupt_state_machine::state::phase::SessionPhase;
-use chitragupt_state_machine::state::session::SessionState;
-use chitragupt_state_machine::state::transition::TransitionEngine;
+use anyhow::Context;
+use tracing::info;
+
+use chitragupt_state_machine::grpc::{StateEngineServer, StateEngineService};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -15,60 +14,20 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
 
-    info!("Chitragupt state machine kernel starting");
+    let addr: SocketAddr = std::env::var("GRPC_ADDR")
+        .unwrap_or_else(|_| "[::]:50051".to_string())
+        .parse()
+        .context("invalid GRPC_ADDR")?;
 
-    let workspace_id = Uuid::new_v4();
-    let project_id = Uuid::new_v4();
-    let state = SessionState::new(workspace_id, project_id);
-    let gate_manager = GateManager::new();
+    let service = StateEngineService::new();
 
-    info!(
-        session_id = %state.session_id,
-        phase = %state.current_phase,
-        "new session created"
-    );
+    info!(%addr, "StateEngine gRPC server listening");
 
-    let transitions = state.current_phase.valid_transitions();
-    info!(
-        "valid transitions from {:?}: {:?}",
-        state.current_phase, transitions
-    );
-
-    let ac_result = state.current_phase.evaluate_ac(&state);
-    info!(
-        met = ac_result.met_count(),
-        unmet = ac_result.unmet_count(),
-        transition_ready = ac_result.transition_ready,
-        "AC evaluation for {:?}",
-        state.current_phase
-    );
-
-    if !ac_result.gaps.is_empty() {
-        info!("first gap → {}", ac_result.gaps[0].suggested_question);
-    }
-
-    let open_gates = gate_manager.open_gates(&state);
-    info!("{} gate(s) currently open", open_gates.len());
-    for gate in &open_gates {
-        info!(
-            "  [{:?}] {} — open: {}",
-            gate.gate_type, gate.id, gate.is_open
-        );
-    }
-
-    match TransitionEngine::attempt(&state, SessionPhase::StakeholderDiscovery, &gate_manager) {
-        Ok(()) => info!("transition approved (unexpected on fresh session)"),
-        Err(e) => info!("transition blocked as expected: {}", e),
-    }
-
-    info!("state machine kernel smoke test complete");
-
-    // TODO: Sprint 1 EPIC-1 — wire gRPC server here
-    // let addr = "[::1]:50051".parse()?;
-    // Server::builder()
-    //     .add_service(StateEngineServer::new(StateEngineService::new()))
-    //     .serve(addr)
-    //     .await?;
+    tonic::transport::Server::builder()
+        .add_service(StateEngineServer::new(service))
+        .serve(addr)
+        .await
+        .context("gRPC server error")?;
 
     Ok(())
 }

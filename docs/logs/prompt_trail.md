@@ -178,6 +178,9 @@
 **P-051**
 > block e now dont do the rust checks again nor the LLM or RAG tests for now we will define this later for now just finish the code and then we move on the F
 
+**P-052**
+> lets finish block F no testing yet
+
 ---
 
 > End of Prompt Trail • Chitragupt • May 2026

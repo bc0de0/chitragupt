@@ -2,38 +2,79 @@ syntax = "proto3";
 
 package chitragupt.state;
 
-// StateEngine — gRPC interface between the Go API gateway and the Rust state machine.
-// This file is a stub. Code generation is wired in Sprint 1 EPIC-1.
+option go_package = "github.com/bc0de0/chitragupt/services/api-gateway/proto/state";
 
+import "common.proto";
+
+// StateEngine — gRPC service exposed by the Rust state machine kernel.
+// The Go API gateway is the sole client.
+//
+// Design: Go orchestrates both Rust (state) and Python (AI pipeline).
+//   1. Go → Rust: CreateSession or GetSessionState
+//   2. Go → Python: RunPipeline (streaming tokens)
+//   3. Go → Rust: ApplyTurnResult (entities + AC updates from pipeline)
+//   4. Go → Rust: RequestTransition (if transition ready)
 service StateEngine {
-  // Process one BA turn. Returns streaming tokens + turn completion metadata.
-  rpc ProcessTurn(TurnRequest) returns (stream TurnEvent);
+  // Create and initialise a new session. Returns the session_id.
+  rpc CreateSession(CreateSessionRequest) returns (CreateSessionResponse);
 
-  // Request a phase transition. Returns whether transition was approved.
+  // Return current session state (called by Go before every pipeline turn).
+  rpc GetSessionState(SessionQuery) returns (chitragupt.common.SessionStateProto);
+
+  // Apply entity extractions and AC updates produced by the Python pipeline.
+  rpc ApplyTurnResult(TurnResultRequest) returns (TurnResultResponse);
+
+  // Attempt a forward phase transition. Returns approved/blocked.
   rpc RequestTransition(TransitionRequest) returns (TransitionResponse);
 
-  // Return the current session state summary.
-  rpc GetSessionState(SessionQuery) returns (SessionSummary);
+  // Re-enter a prior phase without clearing captured data.
+  rpc RevisitPhase(RevisitRequest) returns (RevisitResponse);
 }
 
-message TurnRequest {
-  string session_id = 1;
-  string message    = 2;
-  string intent     = 3; // populated by Go if pre-classified
+// ---------------------------------------------------------------------------
+// CreateSession
+// ---------------------------------------------------------------------------
+
+message CreateSessionRequest {
+  string workspace_id = 1;
+  string project_id   = 2;
 }
 
-message TurnEvent {
-  oneof event {
-    string token           = 1; // streaming token
-    TurnComplete complete  = 2; // end of turn
-  }
+message CreateSessionResponse {
+  string session_id    = 1;
+  string current_phase = 2;
 }
 
-message TurnComplete {
-  bool transition_ready = 1;
-  repeated string ac_gaps = 2;
-  repeated string open_gates = 3;
+// ---------------------------------------------------------------------------
+// GetSessionState
+// ---------------------------------------------------------------------------
+
+message SessionQuery {
+  string session_id   = 1;
+  string workspace_id = 2; // required for RLS key construction
 }
+
+// ---------------------------------------------------------------------------
+// ApplyTurnResult
+// ---------------------------------------------------------------------------
+
+message TurnResultRequest {
+  string session_id                                    = 1;
+  repeated chitragupt.common.EntityProto   entities   = 2;
+  repeated chitragupt.common.AcUpdateProto ac_updates = 3;
+  double cost_usd                                      = 4;
+  int32  turn_count_delta                              = 5; // usually 1
+}
+
+message TurnResultResponse {
+  string current_phase    = 1;
+  bool   transition_ready = 2;
+  int32  unmet_ac_count   = 3;
+}
+
+// ---------------------------------------------------------------------------
+// RequestTransition
+// ---------------------------------------------------------------------------
 
 message TransitionRequest {
   string session_id   = 1;
@@ -41,18 +82,22 @@ message TransitionRequest {
 }
 
 message TransitionResponse {
-  bool approved        = 1;
+  bool   approved      = 1;
   string error_message = 2;
+  string current_phase = 3; // reflects state after the call
 }
 
-message SessionQuery {
-  string session_id = 1;
+// ---------------------------------------------------------------------------
+// RevisitPhase
+// ---------------------------------------------------------------------------
+
+message RevisitRequest {
+  string session_id   = 1;
+  string target_phase = 2;
 }
 
-message SessionSummary {
-  string session_id    = 1;
-  string current_phase = 2;
-  int32  turn_count    = 3;
-  bool   transition_ready = 4;
-  double total_cost_usd   = 5;
+message RevisitResponse {
+  bool   ok            = 1;
+  string error_message = 2;
+  string current_phase = 3;
 }

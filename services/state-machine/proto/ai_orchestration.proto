@@ -1,0 +1,80 @@
+syntax = "proto3";
+
+package chitragupt.orchestration;
+
+option go_package = "github.com/bc0de0/chitragupt/services/api-gateway/proto/orchestration";
+
+import "common.proto";
+
+// AiOrchestration — gRPC service exposed by the Python AI orchestration service.
+// The Go API gateway is the sole client; it calls RunPipeline for each BA turn
+// and IngestDocument when a file upload completes.
+service AiOrchestration {
+  // Execute one BA turn through the full LangGraph pipeline.
+  // Streams guidance tokens, then sends a single TurnComplete event.
+  rpc RunPipeline(PipelineRequest) returns (stream PipelineEvent);
+
+  // Fire-and-forget document ingestion (chunking + embedding + indexing).
+  // Returns immediately; status is pushed via Redis pub/sub when done.
+  rpc IngestDocument(IngestRequest) returns (IngestResponse);
+
+  // Liveness / readiness probe.
+  rpc Healthz(HealthRequest) returns (HealthResponse);
+}
+
+// ---------------------------------------------------------------------------
+// RunPipeline
+// ---------------------------------------------------------------------------
+
+message PipelineRequest {
+  // Full session state, including JSON blob consumed by Python nodes.
+  chitragupt.common.SessionStateProto session_state = 1;
+  string user_message = 2;
+}
+
+message PipelineEvent {
+  oneof event {
+    string       token    = 1; // guidance token (stream these to the BA)
+    TurnComplete complete = 2; // sent exactly once, after all tokens
+  }
+}
+
+message TurnComplete {
+  string intent                                       = 1;
+  repeated chitragupt.common.EntityProto   entities   = 2;
+  repeated chitragupt.common.AcUpdateProto ac_updates = 3;
+  bool   transition_ready                             = 4;
+  string gap_criterion_id                             = 5;
+  string suggested_question                           = 6;
+  float  cost_usd                                     = 7;
+  map<string, string> node_errors                     = 8;
+  bool   aborted                                      = 9;
+}
+
+// ---------------------------------------------------------------------------
+// IngestDocument
+// ---------------------------------------------------------------------------
+
+message IngestRequest {
+  string document_id  = 1;
+  string workspace_id = 2;
+  string project_id   = 3;
+  string session_id   = 4;
+  string filename     = 5;
+  bytes  content      = 6; // raw file bytes (gateway fetched from R2)
+}
+
+message IngestResponse {
+  string document_id = 1;
+  string status      = 2; // "accepted" | "rejected" | "duplicate"
+}
+
+// ---------------------------------------------------------------------------
+// Healthz
+// ---------------------------------------------------------------------------
+
+message HealthRequest {}
+
+message HealthResponse {
+  string status = 1; // "ok"
+}

@@ -1,6 +1,9 @@
-# ── base: toolchain ───────────────────────────────────────────────────────────
+# ── base: toolchain + protoc ──────────────────────────────────────────────────
 FROM rust:1-slim AS base
 WORKDIR /app
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends protobuf-compiler \
+    && rm -rf /var/lib/apt/lists/*
 RUN rustup component add rustfmt clippy
 
 # ── deps: fetch crates (cached until manifests or lock file change) ───────────
@@ -14,6 +17,7 @@ FROM deps AS tester
 COPY services/state-machine/src      ./services/state-machine/src
 COPY services/state-machine/tests    ./services/state-machine/tests
 COPY services/state-machine/proto    ./services/state-machine/proto
+COPY services/state-machine/build.rs ./services/state-machine/build.rs
 RUN cargo fmt --check
 RUN cargo clippy -p chitragupt-state-machine --all-targets -- -D warnings
 RUN cargo test  -p chitragupt-state-machine

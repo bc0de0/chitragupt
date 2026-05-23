@@ -175,6 +175,9 @@
 **P-050**
 > check the python to rust communication without docker to save time using the local GCC toolchain
 
+**P-051**
+> block e now dont do the rust checks again nor the LLM or RAG tests for now we will define this later for now just finish the code and then we move on the F
+
 ---
 
 > End of Prompt Trail • Chitragupt • May 2026

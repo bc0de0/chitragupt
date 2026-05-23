@@ -86,12 +86,17 @@ class SessionLLMContextFactory:
         Create a fresh context for one BA turn.
         Loads the session's spend from Redis (or starts at 0.0 for tests).
         """
-        session_id = (
-            session_state.get("session_id", "unknown")
-            if isinstance(session_state, dict)
-            else str(getattr(session_state, "session_id", "unknown"))
+        def _str(obj: Any, key: str) -> str:
+            return str(obj.get(key, "") if isinstance(obj, dict) else getattr(obj, key, ""))
+
+        session_id   = _str(session_state, "session_id")   or "unknown"
+        workspace_id = _str(session_state, "workspace_id") or None
+
+        budget = await BudgetTracker.load(
+            session_id=session_id,
+            redis=self._redis,
+            workspace_id=workspace_id,
         )
-        budget = await BudgetTracker.load(session_id=session_id, redis=self._redis)
         return SessionLLMContext(
             session_state=session_state,
             budget=budget,

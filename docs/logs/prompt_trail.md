@@ -219,6 +219,9 @@ commercial or budget check coverage is unit, integration e2e and everything that
 **P-062**
 > lets fix the embedding isssue and leave pgvector for now - we are a docker first solution so we dont need to worry here. Use the best embedding available on https://openrouter.ai/models?output_modalities=embeddings
 
+**P-063**
+> now create all the test cases that we have defined in sprint1 in TEST_PLAN and update the ci.yaml accordingly
+
 ---
 
 > End of Prompt Trail • Chitragupt • May 2026

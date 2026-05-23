@@ -1,0 +1,50 @@
+{"id": "u001", "text": "We need to build a new procurement management system.", "expected_intent": "ProblemCapture", "entities": [{"entity_type": "requirement", "value": "procurement management system"}]}
+{"id": "u002", "text": "The CFO and procurement manager are the key stakeholders.", "expected_intent": "StakeholderProbe", "entities": [{"entity_type": "actor", "value": "CFO"}, {"entity_type": "actor", "value": "procurement manager"}]}
+{"id": "u003", "text": "The system must integrate with our existing ERP, specifically SAP.", "expected_intent": "RequirementCapture", "entities": [{"entity_type": "requirement", "value": "ERP integration"}, {"entity_type": "constraint", "value": "SAP compatibility"}]}
+{"id": "u004", "text": "What phase are we in right now?", "expected_intent": "Clarification", "entities": []}
+{"id": "u005", "text": "Can we go back and revisit what we said about the actors?", "expected_intent": "REVISIT", "entities": []}
+{"id": "u006", "text": "The budget is approximately 2 million dollars over 18 months.", "expected_intent": "ConstraintCapture", "entities": [{"entity_type": "constraint", "value": "budget: $2M"}, {"entity_type": "constraint", "value": "timeline: 18 months"}]}
+{"id": "u007", "text": "Yes, I confirm that everything looks correct.", "expected_intent": "SignOff", "entities": []}
+{"id": "u008", "text": "The system needs to handle at least 10,000 concurrent users.", "expected_intent": "RequirementCapture", "entities": [{"entity_type": "requirement", "value": "10,000 concurrent users"}]}
+{"id": "u009", "text": "We operate in the financial services sector under GDPR.", "expected_intent": "ProblemCapture", "entities": [{"entity_type": "constraint", "value": "GDPR compliance"}, {"entity_type": "assumption", "value": "financial services sector"}]}
+{"id": "u010", "text": "The IT administrator will be responsible for user management.", "expected_intent": "StakeholderProbe", "entities": [{"entity_type": "actor", "value": "IT administrator"}]}
+{"id": "u011", "text": "I'm not sure what you mean by non-functional requirements.", "expected_intent": "Clarification", "entities": []}
+{"id": "u012", "text": "Let me revisit the problem statement we agreed on earlier.", "expected_intent": "REVISIT", "entities": []}
+{"id": "u013", "text": "The main pain point is that the current approval process takes 3 weeks.", "expected_intent": "ProblemCapture", "entities": [{"entity_type": "gap", "value": "approval process takes 3 weeks"}]}
+{"id": "u014", "text": "The system must respond to every request within 2 seconds.", "expected_intent": "RequirementCapture", "entities": [{"entity_type": "requirement", "value": "2 second response time"}]}
+{"id": "u015", "text": "We assume the legacy system will be decommissioned by Q4 2026.", "expected_intent": "ConstraintCapture", "entities": [{"entity_type": "assumption", "value": "legacy system decommissioned by Q4 2026"}]}
+{"id": "u016", "text": "Who else has authority to approve the budget?", "expected_intent": "StakeholderProbe", "entities": []}
+{"id": "u017", "text": "The deployment must be on-premises due to data sovereignty requirements.", "expected_intent": "ConstraintCapture", "entities": [{"entity_type": "constraint", "value": "on-premises deployment"}, {"entity_type": "constraint", "value": "data sovereignty"}]}
+{"id": "u018", "text": "Can you summarise what we've captured so far?", "expected_intent": "Clarification", "entities": []}
+{"id": "u019", "text": "The solution needs to support English, French, and Spanish.", "expected_intent": "RequirementCapture", "entities": [{"entity_type": "requirement", "value": "multi-language support: English, French, Spanish"}]}
+{"id": "u020", "text": "I want to go back to requirements — we missed something important.", "expected_intent": "REVISIT", "entities": []}
+{"id": "u021", "text": "The biggest issue is that we lose track of supplier contracts.", "expected_intent": "ProblemCapture", "entities": [{"entity_type": "gap", "value": "supplier contract tracking"}]}
+{"id": "u022", "text": "Finance, procurement, and legal teams will all use this system.", "expected_intent": "StakeholderProbe", "entities": [{"entity_type": "actor", "value": "Finance team"}, {"entity_type": "actor", "value": "procurement team"}, {"entity_type": "actor", "value": "legal team"}]}
+{"id": "u023", "text": "The system must generate PDF reports automatically every Monday.", "expected_intent": "RequirementCapture", "entities": [{"entity_type": "requirement", "value": "automated PDF reports"}, {"entity_type": "requirement", "value": "weekly schedule: Monday"}]}
+{"id": "u024", "text": "Yes, that accurately captures our situation.", "expected_intent": "SignOff", "entities": []}
+{"id": "u025", "text": "We need to ensure data encryption both in transit and at rest.", "expected_intent": "RequirementCapture", "entities": [{"entity_type": "requirement", "value": "data encryption in transit"}, {"entity_type": "requirement", "value": "data encryption at rest"}]}
+{"id": "u026", "text": "The Director of Operations will be the final sign-off authority.", "expected_intent": "StakeholderProbe", "entities": [{"entity_type": "actor", "value": "Director of Operations"}]}
+{"id": "u027", "text": "Can you repeat that last question?", "expected_intent": "Clarification", "entities": []}
+{"id": "u028", "text": "We're constrained by a no-new-vendor policy from IT security.", "expected_intent": "ConstraintCapture", "entities": [{"entity_type": "constraint", "value": "no-new-vendor policy"}]}
+{"id": "u029", "text": "Let's revisit the constraints we agreed on.", "expected_intent": "REVISIT", "entities": []}
+{"id": "u030", "text": "The project must go live before the end of the fiscal year.", "expected_intent": "ConstraintCapture", "entities": [{"entity_type": "constraint", "value": "go-live before end of fiscal year"}]}
+{"id": "u031", "text": "We want to automate the three-way match process for invoices.", "expected_intent": "RequirementCapture", "entities": [{"entity_type": "requirement", "value": "automated three-way match for invoices"}]}
+{"id": "u032", "text": "The external auditors will need read-only access.", "expected_intent": "StakeholderProbe", "entities": [{"entity_type": "actor", "value": "external auditors"}]}
+{"id": "u033", "text": "I don't understand what SLA means in this context.", "expected_intent": "Clarification", "entities": []}
+{"id": "u034", "text": "The system must support mobile devices for field workers.", "expected_intent": "RequirementCapture", "entities": [{"entity_type": "requirement", "value": "mobile device support"}]}
+{"id": "u035", "text": "Correct, I approve the problem statement as written.", "expected_intent": "SignOff", "entities": []}
+{"id": "u036", "text": "Our biggest risk is resistance to change from the procurement team.", "expected_intent": "ProblemCapture", "entities": [{"entity_type": "assumption", "value": "change resistance risk in procurement team"}]}
+{"id": "u037", "text": "Can we go back to discuss the actor list again?", "expected_intent": "REVISIT", "entities": []}
+{"id": "u038", "text": "The system must be accessible 24/7 with 99.95% uptime.", "expected_intent": "RequirementCapture", "entities": [{"entity_type": "requirement", "value": "99.95% uptime SLA"}, {"entity_type": "requirement", "value": "24/7 availability"}]}
+{"id": "u039", "text": "We have a strict HIPAA compliance requirement for all data.", "expected_intent": "ConstraintCapture", "entities": [{"entity_type": "constraint", "value": "HIPAA compliance"}]}
+{"id": "u040", "text": "What does the next phase involve?", "expected_intent": "Clarification", "entities": []}
+{"id": "u041", "text": "The system should send email notifications for contract renewals.", "expected_intent": "RequirementCapture", "entities": [{"entity_type": "requirement", "value": "email notifications for contract renewals"}]}
+{"id": "u042", "text": "Our CTO is the technical decision-maker for architecture choices.", "expected_intent": "StakeholderProbe", "entities": [{"entity_type": "actor", "value": "CTO"}]}
+{"id": "u043", "text": "We're aiming to reduce procurement cycle time by 40%.", "expected_intent": "ProblemCapture", "entities": [{"entity_type": "gap", "value": "reduce procurement cycle time by 40%"}]}
+{"id": "u044", "text": "Yes, I agree with all of that.", "expected_intent": "SignOff", "entities": []}
+{"id": "u045", "text": "The development team must use Azure as the cloud provider.", "expected_intent": "ConstraintCapture", "entities": [{"entity_type": "constraint", "value": "Azure cloud provider"}]}
+{"id": "u046", "text": "What do you mean by acceptance criteria?", "expected_intent": "Clarification", "entities": []}
+{"id": "u047", "text": "Let's revisit the problem statement one more time.", "expected_intent": "REVISIT", "entities": []}
+{"id": "u048", "text": "The system must integrate with DocuSign for digital signatures.", "expected_intent": "RequirementCapture", "entities": [{"entity_type": "requirement", "value": "DocuSign integration"}]}
+{"id": "u049", "text": "The vendor manager and contract administrator are both key users.", "expected_intent": "StakeholderProbe", "entities": [{"entity_type": "actor", "value": "vendor manager"}, {"entity_type": "actor", "value": "contract administrator"}]}
+{"id": "u050", "text": "All stakeholders have confirmed the solution design is acceptable.", "expected_intent": "SignOff", "entities": []}

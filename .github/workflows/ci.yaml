@@ -9,7 +9,7 @@ on:
 jobs:
   # ─────────────────────────────────────────────────────────────────────────────
   # Rust — state-machine kernel
-  # Runs inside Docker: fmt check → clippy → 188 unit/integration tests
+  # Runs inside Docker: fmt check → clippy → unit/integration tests
   # Uses the runner's system Docker daemon (avoids buildx container-driver
   # network isolation that prevents Docker Hub pulls).
   # ─────────────────────────────────────────────────────────────────────────────
@@ -24,14 +24,32 @@ jobs:
         run: docker build --target tester .
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # Python — AI / RAG orchestration  (enable when services/ai-orchestration exists)
+  # Python — AI / RAG orchestration
+  # Fast mode: unit tests + mocked-integration tests only.
+  # No API keys, no Docker Compose, no external services required.
+  # Marker: @pytest.mark.fast
   # ─────────────────────────────────────────────────────────────────────────────
-  # ai-orchestration:
-  #   name: AI Orchestration (Python)
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - run: docker build --target tester services/ai-orchestration
+  ai-orchestration:
+    name: AI Orchestration (Python · fast)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: services/ai-orchestration/pyproject.toml
+
+      - name: Install package and dev dependencies
+        working-directory: services/ai-orchestration
+        run: pip install -e ".[dev]"
+
+      - name: Run fast unit tests (no external I/O)
+        working-directory: services/ai-orchestration
+        run: pytest -m fast --tb=short -q
 
   # ─────────────────────────────────────────────────────────────────────────────
   # Go — API gateway  (enable when services/api-gateway exists)

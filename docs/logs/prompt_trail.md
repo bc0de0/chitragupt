@@ -198,6 +198,9 @@ commercial or budget check coverage is unit, integration e2e and everything that
 **P-055**
 > add the testing plan process to /playbooks as part of our standard BA process sops
 
+**P-056**
+> now let us start building the tests in TEST PLAN. lets write tests for domain #1 and #2 only with a single testing harness in ps1. The testing harness should be able to bootstrap all tests from dommain #1 t the last domain and lauch the entire suite of tests, log important observed events and produce a final test findings report. This harness excludes build tests (tests were full polygot builds are needed) like UAT or smoke tests
+
 ---
 
 > End of Prompt Trail • Chitragupt • May 2026

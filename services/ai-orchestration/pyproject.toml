@@ -78,6 +78,12 @@ plugins = ["pydantic.mypy"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "fast: unit + mocked-integration tests — no API keys or Docker required (default CI gate)",
+    "integration: requires Docker Compose (PostgreSQL, Redis, gRPC services)",
+    "quality: requires real LLM API keys — runs on schedule, not in CI",
+    "latency: requires warm Docker Compose stack + API keys — runs pre-release",
+]
 
 [tool.ruff]
 line-length = 100
